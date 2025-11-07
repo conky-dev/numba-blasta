@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { MdDashboard, MdContacts, MdMessage } from 'react-icons/md'
+import { MdDashboard, MdContacts, MdMessage, MdLogout } from 'react-icons/md'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 
 const menuItems = [
   { 
@@ -36,7 +37,9 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({ SMS: true })
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const toggleMenu = (menuName: string) => {
     setExpandedMenus(prev => ({
@@ -50,6 +53,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (window.innerWidth < 768) {
       onClose()
     }
+  }
+
+  const handleLogout = () => {
+    // Perform logout logic here (clear tokens, etc.)
+    router.push('/')
   }
 
   return (
@@ -141,7 +149,29 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
           ))}
         </nav>
+
+        {/* Logout Button */}
+        <div className="p-4 border-t border-gray-200">
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
+            className="w-full flex items-center space-x-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+          >
+            <MdLogout className="w-5 h-5" />
+            <span className="font-medium">Logout</span>
+          </button>
+        </div>
       </aside>
+
+      <ConfirmModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={handleLogout}
+        message="Are you sure you want to log out?"
+        title="Confirm Logout"
+        type="warning"
+        confirmText="Logout"
+        cancelText="Cancel"
+      />
     </>
   )
 }
