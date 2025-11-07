@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
+import AlertModal from '@/components/modals/AlertModal'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions } from 'react-icons/md'
 
 export default function QuickSMSPage() {
@@ -11,6 +12,11 @@ export default function QuickSMSPage() {
   const [sendTime, setSendTime] = useState('now')
   const [shortenUrl, setShortenUrl] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
 
   // Calculate SMS segments (160 chars per segment)
   const charCount = message.length
@@ -18,14 +24,24 @@ export default function QuickSMSPage() {
 
   const handlePreview = () => {
     if (!to || !message) {
-      alert('Please fill in both To and Message fields')
+      setAlertModal({
+        isOpen: true,
+        message: 'Please fill in both To and Message fields',
+        title: 'Missing Information',
+        type: 'error'
+      })
       return
     }
     setShowPreview(true)
   }
 
   const handleSend = () => {
-    alert(`SMS would be sent to: ${to}\nMessage: ${message}`)
+    setAlertModal({
+      isOpen: true,
+      message: `SMS would be sent to: ${to}\nMessage: ${message}`,
+      title: 'SMS Sent',
+      type: 'success'
+    })
     setShowPreview(false)
     // Reset form
     setTo('')
@@ -105,7 +121,12 @@ export default function QuickSMSPage() {
                   <span>Placeholder</span>
                 </button>
                 <button 
-                  onClick={() => alert('Template selection coming soon!')}
+                  onClick={() => setAlertModal({
+                    isOpen: true,
+                    message: 'Template selection coming soon!',
+                    title: 'Templates',
+                    type: 'info'
+                  })}
                   className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
                   <MdInsertDriveFile />
@@ -237,6 +258,14 @@ export default function QuickSMSPage() {
         sendTime={sendTime}
         charCount={charCount}
         smsCount={smsCount}
+      />
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
       />
     </div>
   )

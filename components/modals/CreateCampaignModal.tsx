@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import AlertModal from '@/components/modals/AlertModal'
 
 interface Campaign {
   name: string
@@ -26,12 +27,22 @@ export default function CreateCampaignModal({
     message: '',
     recipients: ''
   })
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
 
   if (!isOpen) return null
 
   const handleSubmit = () => {
     if (!formData.name || !formData.message) {
-      alert('Please fill in campaign name and message')
+      setAlertModal({
+        isOpen: true,
+        message: 'Please fill in campaign name and message',
+        title: 'Missing Information',
+        type: 'error'
+      })
       return
     }
     onCreate(formData)
@@ -116,6 +127,14 @@ export default function CreateCampaignModal({
           </button>
         </div>
       </div>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
     </div>
   )
 }

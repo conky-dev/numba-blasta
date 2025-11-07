@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { MdEdit, MdDelete } from 'react-icons/md'
+import AlertModal from '@/components/modals/AlertModal'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 
 interface Template {
   id: number
@@ -17,10 +20,25 @@ export default function TemplatesPage() {
     name: '',
     message: ''
   })
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; title?: string; onConfirm: () => void }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => {}
+  })
 
   const handleSave = () => {
     if (!formData.name || !formData.message) {
-      alert('Please fill in both name and message')
+      setAlertModal({
+        isOpen: true,
+        message: 'Please fill in both name and message',
+        title: 'Missing Information',
+        type: 'error'
+      })
       return
     }
 
@@ -54,9 +72,14 @@ export default function TemplatesPage() {
   }
 
   const handleDelete = (id: number) => {
-    if (confirm('Are you sure you want to delete this template?')) {
-      setTemplates(templates.filter(t => t.id !== id))
-    }
+    setConfirmModal({
+      isOpen: true,
+      message: 'Are you sure you want to delete this template? This action cannot be undone.',
+      title: 'Delete Template',
+      onConfirm: () => {
+        setTemplates(templates.filter(t => t.id !== id))
+      }
+    })
   }
 
   const handleCancel = () => {
@@ -107,13 +130,13 @@ export default function TemplatesPage() {
                     onClick={() => handleEdit(template)}
                     className="text-blue-500 hover:text-blue-700 text-sm"
                   >
-                    ✏️
+                    <MdEdit className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => handleDelete(template.id)}
                     className="text-red-500 hover:text-red-700 text-sm"
                   >
-                    🗑️
+                    <MdDelete className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -182,6 +205,24 @@ export default function TemplatesPage() {
           </div>
         </div>
       )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        onConfirm={confirmModal.onConfirm}
+        message={confirmModal.message}
+        title={confirmModal.title}
+        type="danger"
+        confirmText="Delete"
+      />
     </div>
   )
 }

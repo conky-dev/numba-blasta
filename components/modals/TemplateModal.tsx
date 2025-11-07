@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import AlertModal from '@/components/modals/AlertModal'
 
 interface TemplateFormData {
   name: string
@@ -23,12 +24,22 @@ export default function TemplateModal({
   const [formData, setFormData] = useState<TemplateFormData>(
     editingTemplate || { name: '', message: '' }
   )
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
 
   if (!isOpen) return null
 
   const handleSave = () => {
     if (!formData.name || !formData.message) {
-      alert('Please fill in both name and message')
+      setAlertModal({
+        isOpen: true,
+        message: 'Please fill in both name and message',
+        title: 'Missing Information',
+        type: 'error'
+      })
       return
     }
     onSave(formData)
@@ -95,6 +106,14 @@ export default function TemplateModal({
           </button>
         </div>
       </div>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
     </div>
   )
 }

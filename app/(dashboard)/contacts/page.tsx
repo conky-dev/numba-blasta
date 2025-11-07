@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { MdEdit, MdDelete, MdEmail } from 'react-icons/md'
+import AlertModal from '@/components/modals/AlertModal'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 
 interface Contact {
   id: number
@@ -40,6 +42,16 @@ export default function ContactsPage() {
     email: '',
     tags: ''
   })
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; title?: string; onConfirm: () => void }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => {}
+  })
 
   const filteredContacts = contacts.filter(contact =>
     contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -49,7 +61,12 @@ export default function ContactsPage() {
 
   const handleSave = () => {
     if (!formData.name || !formData.phone) {
-      alert('Name and phone number are required')
+      setAlertModal({
+        isOpen: true,
+        message: 'Name and phone number are required',
+        title: 'Missing Information',
+        type: 'error'
+      })
       return
     }
 
@@ -94,9 +111,14 @@ export default function ContactsPage() {
   }
 
   const handleDelete = (id: number) => {
-    if (confirm('Are you sure you want to delete this contact?')) {
-      setContacts(contacts.filter(c => c.id !== id))
-    }
+    setConfirmModal({
+      isOpen: true,
+      message: 'Are you sure you want to delete this contact? This action cannot be undone.',
+      title: 'Delete Contact',
+      onConfirm: () => {
+        setContacts(contacts.filter(c => c.id !== id))
+      }
+    })
   }
 
   const handleCancel = () => {
@@ -260,6 +282,24 @@ export default function ContactsPage() {
           </div>
         </div>
       )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        onConfirm={confirmModal.onConfirm}
+        message={confirmModal.message}
+        title={confirmModal.title}
+        type="danger"
+        confirmText="Delete"
+      />
     </div>
   )
 }

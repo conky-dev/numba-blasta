@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import AlertModal from '@/components/modals/AlertModal'
 
 interface BalanceModalProps {
   isOpen: boolean
@@ -16,13 +17,23 @@ export default function BalanceModal({
   onTopUp
 }: BalanceModalProps) {
   const [topUpAmount, setTopUpAmount] = useState('')
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
 
   if (!isOpen) return null
 
   const handleTopUp = () => {
     const amount = parseFloat(topUpAmount)
     if (isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid amount')
+      setAlertModal({
+        isOpen: true,
+        message: 'Please enter a valid amount',
+        title: 'Invalid Amount',
+        type: 'error'
+      })
       return
     }
     onTopUp(amount)
@@ -84,6 +95,14 @@ export default function BalanceModal({
           Note: This is a demo. Real payment integration required for production.
         </p>
       </div>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
     </div>
   )
 }

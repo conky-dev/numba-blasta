@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { FaSync } from 'react-icons/fa'
 import { MdMessage, MdPhone, MdTextsms, MdCampaign, MdContacts } from 'react-icons/md'
+import AlertModal from '@/components/modals/AlertModal'
 
 export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState('30days')
@@ -10,6 +11,11 @@ export default function DashboardPage() {
     smsOutbound: 0,
     smsInbound: 0,
     voiceOutbound: 0
+  })
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
   })
 
   // Mock data for the chart
@@ -88,17 +94,6 @@ export default function DashboardPage() {
             <div className="text-3xl font-bold text-gray-800 mb-1">{stats.smsInbound}</div>
             <p className="text-xs text-gray-500">SMS received in last {timeRange === '7days' ? '7' : timeRange === '30days' ? '30' : timeRange === '90days' ? '90' : '365'} days</p>
           </div>
-
-          {/* Voice Outbound */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6 w-full lg:w-64 cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all">
-            <div className="flex items-center space-x-2 mb-2">
-              <MdPhone className="text-blue-500 w-6 h-6" />
-              <h3 className="text-sm font-medium text-gray-600">Voice Outbound</h3>
-            </div>
-            <div className="text-3xl font-bold text-gray-800 mb-1">{stats.voiceOutbound}</div>
-            <p className="text-xs text-gray-500">Voice sent in last {timeRange === '7days' ? '7' : timeRange === '30days' ? '30' : timeRange === '90days' ? '90' : '365'} days</p>
-            <p className="text-xs text-orange-600 mt-2">Coming soon</p>
-          </div>
         </div>
 
         {/* Right side - Chart */}
@@ -115,7 +110,12 @@ export default function DashboardPage() {
               </div>
             </div>
             <button 
-              onClick={() => alert('Detailed analytics coming soon!')}
+              onClick={() => setAlertModal({
+                isOpen: true,
+                message: 'Detailed analytics coming soon!',
+                title: 'Analytics',
+                type: 'info'
+              })}
               className="text-sm text-blue-600 hover:text-blue-700"
             >
               View Details →
@@ -191,6 +191,14 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-600">Add and organize contacts</p>
         </button>
       </div>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
     </div>
   )
 }

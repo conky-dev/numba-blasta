@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import AlertModal from '@/components/modals/AlertModal'
 
 interface ContactFormData {
   name: string
@@ -25,12 +26,22 @@ export default function ContactModal({
   const [formData, setFormData] = useState<ContactFormData>(
     editingContact || { name: '', phone: '', email: '', tags: '' }
   )
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
 
   if (!isOpen) return null
 
   const handleSave = () => {
     if (!formData.name || !formData.phone) {
-      alert('Name and phone number are required')
+      setAlertModal({
+        isOpen: true,
+        message: 'Name and phone number are required',
+        title: 'Missing Information',
+        type: 'error'
+      })
       return
     }
     onSave(formData)
@@ -113,6 +124,14 @@ export default function ContactModal({
           </button>
         </div>
       </div>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
     </div>
   )
 }

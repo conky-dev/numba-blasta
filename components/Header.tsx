@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { FaQuestionCircle, FaBell, FaSearch, FaGlobe, FaBars } from 'react-icons/fa'
+import AlertModal from '@/components/modals/AlertModal'
 
 interface HeaderProps {
   title?: string
@@ -14,6 +15,11 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
   const [showSearch, setShowSearch] = useState(false)
   const [balance, setBalance] = useState(52.88)
   const [topUpAmount, setTopUpAmount] = useState('')
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' | 'warning' }>({
+    isOpen: false,
+    message: '',
+    type: 'info'
+  })
 
   const notifications = [
     { id: 1, text: 'Campaign "NB Users" sent successfully', time: '2 hours ago', unread: true },
@@ -26,13 +32,23 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
   const handleTopUp = () => {
     const amount = parseFloat(topUpAmount)
     if (isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid amount')
+      setAlertModal({
+        isOpen: true,
+        message: 'Please enter a valid amount',
+        title: 'Invalid Amount',
+        type: 'error'
+      })
       return
     }
     setBalance(balance + amount)
     setTopUpAmount('')
     setShowBalanceModal(false)
-    alert(`Successfully added $${amount.toFixed(2)} to your balance!`)
+    setAlertModal({
+      isOpen: true,
+      message: `Successfully added $${amount.toFixed(2)} to your balance!`,
+      title: 'Success',
+      type: 'success'
+    })
   }
 
   return (
@@ -65,7 +81,12 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
 
             {/* Help button */}
             <button 
-              onClick={() => alert('Help documentation coming soon!')}
+              onClick={() => setAlertModal({
+                isOpen: true,
+                message: 'Help documentation coming soon!',
+                title: 'Help',
+                type: 'info'
+              })}
               className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 hidden sm:block"
               title="Help"
             >
@@ -129,7 +150,12 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
 
             {/* Language/Settings */}
             <button 
-              onClick={() => alert('Language settings coming soon!')}
+              onClick={() => setAlertModal({
+                isOpen: true,
+                message: 'Language settings coming soon!',
+                title: 'Settings',
+                type: 'info'
+              })}
               className="w-7 h-7 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-sm hover:bg-green-600 transition-colors"
               title="Settings"
             >
@@ -215,6 +241,14 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
           onClick={() => setShowNotifications(false)}
         />
       )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        message={alertModal.message}
+        title={alertModal.title}
+        type={alertModal.type}
+      />
     </>
   )
 }
