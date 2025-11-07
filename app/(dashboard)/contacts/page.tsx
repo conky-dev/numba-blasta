@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MdEdit, MdDelete, MdEmail } from 'react-icons/md'
 
 interface Contact {
   id: number
@@ -146,18 +147,21 @@ export default function ContactsPage() {
                   onClick={() => handleEdit(contact)}
                   className="text-blue-500 hover:text-blue-700 text-sm"
                 >
-                  ✏️
+                  <MdEdit className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => handleDelete(contact.id)}
                   className="text-red-500 hover:text-red-700 text-sm"
                 >
-                  🗑️
+                  <MdDelete className="w-5 h-5" />
                 </button>
               </div>
             </div>
             {contact.email && (
-              <p className="text-sm text-gray-600 mb-2">📧 {contact.email}</p>
+              <p className="text-sm text-gray-600 mb-2 flex items-center space-x-1">
+                <MdEmail className="w-4 h-4" />
+                <span>{contact.email}</span>
+              </p>
             )}
             {contact.tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2">

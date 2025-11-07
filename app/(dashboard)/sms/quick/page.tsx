@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
+import { MdEdit, MdInsertDriveFile, MdEmojiEmotions } from 'react-icons/md'
 
 export default function QuickSMSPage() {
   const [to, setTo] = useState('')
@@ -38,8 +39,9 @@ export default function QuickSMSPage() {
   }
 
   const insertEmoji = () => {
-    const emojis = ['😊', '👍', '❤️', '🎉', '✨', '🔥', '💯', '👋']
-    const selected = prompt(`Popular emojis:\n${emojis.join(' ')}`) || '😊'
+    const emojis = ['smile', 'thumbsup', 'heart', 'party', 'star', 'fire', '100', 'wave']
+    const actualEmojis = ['😊', '👍', '❤️', '🎉', '✨', '🔥', '💯', '👋']
+    const selected = prompt(`Popular emojis:\n${actualEmojis.join(' ')}`) || '😊'
     setMessage(message + selected)
   }
 
@@ -99,21 +101,21 @@ export default function QuickSMSPage() {
                   onClick={insertPlaceholder}
                   className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
-                  <span>✏️</span>
+                  <MdEdit />
                   <span>Placeholder</span>
                 </button>
                 <button 
                   onClick={() => alert('Template selection coming soon!')}
                   className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
-                  <span>📄</span>
+                  <MdInsertDriveFile />
                   <span>Template</span>
                 </button>
                 <button 
                   onClick={insertEmoji}
                   className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
-                  <span>😊</span>
+                  <MdEmojiEmotions />
                   <span>Emoji</span>
                 </button>
               </div>

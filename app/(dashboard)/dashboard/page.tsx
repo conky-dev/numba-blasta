@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { FaSync } from 'react-icons/fa'
+import { MdMessage, MdPhone, MdTextsms, MdCampaign, MdContacts } from 'react-icons/md'
 
 export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState('30days')
@@ -53,10 +55,11 @@ export default function DashboardPage() {
           </select>
           <button
             onClick={handleRefresh}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm flex items-center space-x-2"
             title="Refresh data"
           >
-            🔄 Refresh
+            <FaSync className="w-4 h-4" />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -68,7 +71,7 @@ export default function DashboardPage() {
           <div className="bg-white border-2 border-blue-400 rounded-lg p-6 w-full lg:w-64 cursor-pointer hover:shadow-lg transition-shadow"
                onClick={() => window.location.href = '/sms/history'}>
             <div className="flex items-center space-x-2 mb-2">
-              <span className="text-blue-500">💬</span>
+              <MdMessage className="text-blue-500 w-6 h-6" />
               <h3 className="text-sm font-medium text-gray-600">SMS Outbound</h3>
             </div>
             <div className="text-3xl font-bold text-gray-800 mb-1">{stats.smsOutbound}</div>
@@ -79,7 +82,7 @@ export default function DashboardPage() {
           <div className="bg-white border border-gray-200 rounded-lg p-6 w-full lg:w-64 cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all"
                onClick={() => window.location.href = '/sms/messenger'}>
             <div className="flex items-center space-x-2 mb-2">
-              <span className="text-blue-500">💬</span>
+              <MdMessage className="text-blue-500 w-6 h-6" />
               <h3 className="text-sm font-medium text-gray-600">SMS Inbound</h3>
             </div>
             <div className="text-3xl font-bold text-gray-800 mb-1">{stats.smsInbound}</div>
@@ -89,7 +92,7 @@ export default function DashboardPage() {
           {/* Voice Outbound */}
           <div className="bg-white border border-gray-200 rounded-lg p-6 w-full lg:w-64 cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all">
             <div className="flex items-center space-x-2 mb-2">
-              <span className="text-blue-500">📞</span>
+              <MdPhone className="text-blue-500 w-6 h-6" />
               <h3 className="text-sm font-medium text-gray-600">Voice Outbound</h3>
             </div>
             <div className="text-3xl font-bold text-gray-800 mb-1">{stats.voiceOutbound}</div>
@@ -167,7 +170,7 @@ export default function DashboardPage() {
           onClick={() => window.location.href = '/sms/quick'}
           className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 hover:bg-blue-100 hover:border-blue-300 transition-all text-left"
         >
-          <div className="text-3xl mb-2">📱</div>
+          <MdTextsms className="text-4xl mb-2 text-blue-600" />
           <h3 className="font-semibold text-gray-800 mb-1">Send Quick SMS</h3>
           <p className="text-sm text-gray-600">Send a message instantly</p>
         </button>
@@ -175,7 +178,7 @@ export default function DashboardPage() {
           onClick={() => window.location.href = '/sms/campaigns'}
           className="bg-purple-50 border-2 border-purple-200 rounded-lg p-6 hover:bg-purple-100 hover:border-purple-300 transition-all text-left"
         >
-          <div className="text-3xl mb-2">🚀</div>
+          <MdCampaign className="text-4xl mb-2 text-purple-600" />
           <h3 className="font-semibold text-gray-800 mb-1">Create Campaign</h3>
           <p className="text-sm text-gray-600">Blast SMS to multiple recipients</p>
         </button>
@@ -183,7 +186,7 @@ export default function DashboardPage() {
           onClick={() => window.location.href = '/contacts'}
           className="bg-green-50 border-2 border-green-200 rounded-lg p-6 hover:bg-green-100 hover:border-green-300 transition-all text-left"
         >
-          <div className="text-3xl mb-2">👥</div>
+          <MdContacts className="text-4xl mb-2 text-green-600" />
           <h3 className="font-semibold text-gray-800 mb-1">Manage Contacts</h3>
           <p className="text-sm text-gray-600">Add and organize contacts</p>
         </button>

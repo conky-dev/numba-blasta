@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { FaQuestionCircle, FaBell, FaSearch, FaGlobe, FaBars } from 'react-icons/fa'
 
 interface HeaderProps {
   title?: string
@@ -42,23 +43,11 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
             {/* Hamburger menu for mobile */}
             <button
               onClick={onMenuClick}
-              className="md:hidden p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-              aria-label="Open menu"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-            </button>
+            className="md:hidden p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+            aria-label="Open menu"
+          >
+            <FaBars className="w-6 h-6" />
+          </button>
             {title && <h1 className="text-xl md:text-2xl font-semibold text-gray-800">{title}</h1>}
           </div>
           <div className="flex items-center space-x-2 md:space-x-4">
@@ -80,7 +69,7 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
               className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 hidden sm:block"
               title="Help"
             >
-              ❓
+              <FaQuestionCircle className="w-5 h-5" />
             </button>
 
             {/* Notifications */}
@@ -90,7 +79,7 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
                 className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 relative"
                 title="Notifications"
               >
-                🔔
+                <FaBell className="w-5 h-5" />
                 {unreadCount > 0 && (
                   <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs flex items-center justify-center">
                     {unreadCount}
@@ -135,7 +124,7 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
               className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 hidden sm:block"
               title="Search"
             >
-              🔍
+              <FaSearch className="w-5 h-5" />
             </button>
 
             {/* Language/Settings */}
@@ -144,7 +133,7 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
               className="w-7 h-7 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-sm hover:bg-green-600 transition-colors"
               title="Settings"
             >
-              🌐
+              <FaGlobe className="w-4 h-4" />
             </button>
           </div>
         </div>
