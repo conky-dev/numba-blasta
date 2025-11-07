@@ -9,10 +9,10 @@ export default function QuickSMSPage() {
   const [shortenUrl, setShortenUrl] = useState(false)
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-semibold text-gray-800 mb-6">Quick SMS</h1>
+    <div className="p-4 md:p-8">
+      <h1 className="text-xl md:text-2xl font-semibold text-gray-800 mb-6">Quick SMS</h1>
 
-      <div className="flex space-x-6">
+      <div className="flex flex-col lg:flex-row space-y-6 lg:space-y-0 lg:space-x-6">
         {/* Form */}
         <div className="flex-1 bg-white rounded-lg border border-gray-200 p-6 space-y-6">
           {/* To field */}
@@ -133,7 +133,7 @@ export default function QuickSMSPage() {
         </div>
 
         {/* Phone Preview */}
-        <div className="w-80">
+        <div className="w-full lg:w-80 hidden lg:block">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex justify-between items-center mb-4">
               <span className="text-sm text-gray-600">REPLY NUM</span>

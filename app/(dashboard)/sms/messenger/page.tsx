@@ -15,9 +15,9 @@ const conversations = [
 
 export default function MessengerPage() {
   return (
-    <div className="flex h-[calc(100vh-73px)]">
+    <div className="flex h-[calc(100vh-73px)] md:h-[calc(100vh-73px)]">
       {/* Left sidebar - Conversations */}
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+      <div className="w-full md:w-80 bg-white border-r border-gray-200 flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-gray-200">
           <h1 className="text-xl font-semibold text-gray-800 mb-4">Inbox</h1>
@@ -72,7 +72,7 @@ export default function MessengerPage() {
       </div>
 
       {/* Right side - Empty state */}
-      <div className="flex-1 bg-gray-50 flex items-center justify-center">
+      <div className="hidden md:flex flex-1 bg-gray-50 items-center justify-center">
         <div className="text-center max-w-md">
           <div className="mb-6">
             <svg className="w-64 h-64 mx-auto text-blue-200" viewBox="0 0 400 300" fill="none">

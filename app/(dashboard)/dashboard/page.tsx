@@ -9,16 +9,16 @@ export default function DashboardPage() {
   const dates = ['Oct 11', 'Oct 14', 'Oct 17', 'Oct 20', 'Oct 23', 'Oct 26', 'Oct 29', 'Nov 1', 'Nov 4', 'Nov 7']
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-800">Statistics</h1>
+        <h1 className="text-xl md:text-2xl font-semibold text-gray-800">Statistics</h1>
       </div>
 
-      <div className="flex items-start space-x-6">
+      <div className="flex flex-col lg:flex-row items-start space-y-4 lg:space-y-0 lg:space-x-6">
         {/* Left side - Stats cards */}
-        <div className="space-y-4">
+        <div className="w-full lg:w-auto space-y-4">
           {/* SMS Outbound */}
-          <div className="bg-white border-2 border-blue-400 rounded-lg p-6 w-64">
+          <div className="bg-white border-2 border-blue-400 rounded-lg p-6 w-full lg:w-64">
             <div className="flex items-center space-x-2 mb-2">
               <span className="text-blue-500">💬</span>
               <h3 className="text-sm font-medium text-gray-600">SMS Outbound</h3>
@@ -28,7 +28,7 @@ export default function DashboardPage() {
           </div>
 
           {/* SMS Inbound */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6 w-64">
+          <div className="bg-white border border-gray-200 rounded-lg p-6 w-full lg:w-64">
             <div className="flex items-center space-x-2 mb-2">
               <span className="text-blue-500">💬</span>
               <h3 className="text-sm font-medium text-gray-600">SMS Inbound</h3>
@@ -38,7 +38,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Voice Outbound */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6 w-64">
+          <div className="bg-white border border-gray-200 rounded-lg p-6 w-full lg:w-64">
             <div className="flex items-center space-x-2 mb-2">
               <span className="text-blue-500">📞</span>
               <h3 className="text-sm font-medium text-gray-600">Voice Outbound</h3>

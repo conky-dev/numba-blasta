@@ -21,10 +21,10 @@ const campaigns = [
 
 export default function CampaignsPage() {
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 md:p-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 space-y-4 sm:space-y-0">
         <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-semibold text-gray-800">SMS Campaigns</h1>
+          <h1 className="text-xl md:text-2xl font-semibold text-gray-800">SMS Campaigns</h1>
           <button className="w-8 h-8 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center justify-center text-xl">
             +
           </button>
@@ -32,12 +32,12 @@ export default function CampaignsPage() {
         <input
           type="text"
           placeholder="Search..."
-          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
+          className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-64"
         />
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <table className="w-full">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="border-b border-gray-200">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
