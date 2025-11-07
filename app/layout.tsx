@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Numba Blasta',
+  title: 'SMSblast',
   description: 'White-labeled Twilio SMS Platform',
 }
 

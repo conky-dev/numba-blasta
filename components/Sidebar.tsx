@@ -75,7 +75,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <MdMessage className="w-6 h-6" />
             </div>
             <div>
-              <div className="font-bold text-lg">Numba Blasta</div>
+              <div className="font-bold text-lg">SMSblast</div>
             </div>
           </Link>
           {/* Close button for mobile */}
