@@ -32,11 +32,48 @@ export default function LoginPage() {
 
     setIsLoading(true)
     
-    // Simulate login - in production this would call your auth API
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setAlertModal({
+          isOpen: true,
+          message: data.error || 'Invalid email or password',
+          title: 'Login Failed',
+          type: 'error'
+        })
+        setIsLoading(false)
+        return
+      }
+
+      // Store session in localStorage (Supabase handles this automatically via cookies too)
+      if (data.session) {
+        localStorage.setItem('supabase.auth.token', JSON.stringify(data.session))
+      }
+
+      // Success! Redirect to dashboard
       router.push('/dashboard')
-    }, 800)
+    } catch (error) {
+      console.error('Login error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: 'An unexpected error occurred. Please try again.',
+        title: 'Error',
+        type: 'error'
+      })
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -210,12 +247,7 @@ export default function LoginPage() {
               Don't have an account?{' '}
               <button
                 type="button"
-                onClick={() => setAlertModal({
-                  isOpen: true,
-                  message: 'Sign up functionality coming soon!',
-                  title: 'Sign Up',
-                  type: 'info'
-                })}
+                onClick={() => router.push('/signup')}
                 className="font-semibold text-blue-600 hover:text-blue-700 transition-colors"
               >
                 Sign up

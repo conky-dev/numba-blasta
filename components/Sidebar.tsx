@@ -55,9 +55,23 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
   }
 
-  const handleLogout = () => {
-    // Perform logout logic here (clear tokens, etc.)
-    router.push('/')
+  const handleLogout = async () => {
+    try {
+      // Call logout API
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+      })
+
+      // Clear local storage
+      localStorage.removeItem('supabase.auth.token')
+
+      // Redirect to login
+      router.push('/')
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Still redirect even if API call fails
+      router.push('/')
+    }
   }
 
   return (
