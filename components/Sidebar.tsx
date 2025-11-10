@@ -63,13 +63,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       })
 
       // Clear local storage
-      localStorage.removeItem('supabase.auth.token')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
 
       // Redirect to login
       router.push('/')
     } catch (error) {
       console.error('Logout error:', error)
       // Still redirect even if API call fails
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
       router.push('/')
     }
   }

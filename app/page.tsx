@@ -57,9 +57,10 @@ export default function LoginPage() {
         return
       }
 
-      // Store session in localStorage (Supabase handles this automatically via cookies too)
-      if (data.session) {
-        localStorage.setItem('supabase.auth.token', JSON.stringify(data.session))
+      // Store session in localStorage
+      if (data.token) {
+        localStorage.setItem('auth_token', data.token)
+        localStorage.setItem('user', JSON.stringify(data.user))
       }
 
       // Success! Redirect to dashboard
