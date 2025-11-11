@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FaQuestionCircle, FaBell, FaSearch, FaGlobe, FaBars } from 'react-icons/fa'
+import { FaQuestionCircle, FaBell, FaBars } from 'react-icons/fa'
 import AlertModal from '@/components/modals/AlertModal'
+import HelpModal from '@/components/modals/HelpModal'
 import { api } from '@/lib/api-client'
 
 interface HeaderProps {
@@ -13,7 +14,7 @@ interface HeaderProps {
 export default function Header({ title, onMenuClick }: HeaderProps) {
   const [showBalanceModal, setShowBalanceModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
-  const [showSearch, setShowSearch] = useState(false)
+  const [showHelpModal, setShowHelpModal] = useState(false)
   const [balance, setBalance] = useState(0)
   const [loadingBalance, setLoadingBalance] = useState(true)
   const [topUpAmount, setTopUpAmount] = useState('')
@@ -134,12 +135,7 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
 
             {/* Help button */}
             <button 
-              onClick={() => setAlertModal({
-                isOpen: true,
-                message: 'Help documentation coming soon!',
-                title: 'Help',
-                type: 'info'
-              })}
+              onClick={() => setShowHelpModal(true)}
               className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 hidden sm:block"
               title="Help"
             >
@@ -191,43 +187,8 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
                 </div>
               )}
             </div>
-
-            {/* Search */}
-            <button 
-              onClick={() => setShowSearch(!showSearch)}
-              className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 hidden sm:block"
-              title="Search"
-            >
-              <FaSearch className="w-5 h-5" />
-            </button>
-
-            {/* Language/Settings */}
-            <button 
-              onClick={() => setAlertModal({
-                isOpen: true,
-                message: 'Language settings coming soon!',
-                title: 'Settings',
-                type: 'info'
-              })}
-              className="w-7 h-7 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-sm hover:bg-green-600 transition-colors"
-              title="Settings"
-            >
-              <FaGlobe className="w-4 h-4" />
-            </button>
           </div>
         </div>
-
-        {/* Search bar */}
-        {showSearch && (
-          <div className="mt-4 animate-fadeIn">
-            <input
-              type="text"
-              placeholder="Search messages, campaigns, contacts..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              autoFocus
-            />
-          </div>
-        )}
       </header>
 
       {/* Balance Top-up Modal */}
@@ -303,6 +264,11 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
         message={alertModal.message}
         title={alertModal.title}
         type={alertModal.type}
+      />
+
+      <HelpModal
+        isOpen={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
       />
     </>
   )
