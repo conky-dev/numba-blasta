@@ -208,6 +208,92 @@ class ApiClient {
   };
 
   // ============================================
+  // CONTACTS API
+  // ============================================
+
+  contacts = {
+    /**
+     * List all contacts
+     */
+    list: async (params?: { search?: string; limit?: number; cursor?: string }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.search) queryParams.append('search', params.search);
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.cursor) queryParams.append('cursor', params.cursor);
+      
+      const query = queryParams.toString();
+      return this.get(`/api/contacts${query ? `?${query}` : ''}`);
+    },
+
+    /**
+     * Get a single contact
+     */
+    get: async (id: string) => {
+      return this.get(`/api/contacts/${id}`);
+    },
+
+    /**
+     * Create a new contact
+     */
+    create: async (data: {
+      firstName?: string;
+      lastName?: string;
+      phone: string;
+      email?: string;
+    }) => {
+      return this.post('/api/contacts', data);
+    },
+
+    /**
+     * Update a contact
+     */
+    update: async (id: string, data: {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      email?: string;
+    }) => {
+      return this.patch(`/api/contacts/${id}`, data);
+    },
+
+    /**
+     * Delete a contact
+     */
+    delete: async (id: string) => {
+      return this.delete(`/api/contacts/${id}`);
+    },
+
+    /**
+     * Import contacts from CSV
+     */
+    import: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      const response = await fetch('/api/contacts/import', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData, // Don't set Content-Type, let browser set it with boundary
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { error: data.error || 'Import failed' };
+      }
+
+      return { data, success: true };
+    },
+  };
+
+  // ============================================
   // TEMPLATES API
   // ============================================
 
