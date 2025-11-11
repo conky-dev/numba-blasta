@@ -35,11 +35,18 @@ This directory contains the SQL schema files for the SMSblast application. These
    - Full-text search on name and content
    - Tracks creator and timestamps
 
+6. **06_sms_campaigns.sql** - SMS campaign management
+   - Campaign configuration (name, message, template, schedule)
+   - Status tracking (draft, scheduled, running, paused, done, failed)
+   - Metrics caching (sent, delivered, failed, replied counts)
+   - Links to templates and contact lists
+   - Helper functions: `is_campaign_editable()`, `get_campaign_metrics()`
+
 ## Setup Instructions
 
 1. Go to your Supabase project dashboard
 2. Navigate to the SQL Editor
-3. Run each file in order (01, 02, 03, 04, 05)
+3. Run each file in order (01, 02, 03, 04, 05, 06)
 4. Verify tables are created successfully
 5. Manually insert your first super admin:
    ```sql
