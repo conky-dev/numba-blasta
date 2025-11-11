@@ -295,6 +295,44 @@ class ApiClient {
   };
 
   // ============================================
+  // BILLING API
+  // ============================================
+
+  billing = {
+    /**
+     * Get current SMS balance
+     */
+    getBalance: async () => {
+      return this.get('/api/billing/balance');
+    },
+
+    /**
+     * Add funds to balance
+     */
+    addFunds: async (data: {
+      amount: number;
+      paymentMethod?: string;
+      paymentIntentId?: string;
+      description?: string;
+    }) => {
+      return this.post('/api/billing/add-funds', data);
+    },
+
+    /**
+     * Get transaction history
+     */
+    getTransactions: async (params?: { limit?: number; offset?: number; type?: string }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.offset) queryParams.append('offset', params.offset.toString());
+      if (params?.type) queryParams.append('type', params.type);
+      
+      const query = queryParams.toString();
+      return this.get(`/api/billing/transactions${query ? `?${query}` : ''}`);
+    },
+  };
+
+  // ============================================
   // TEMPLATES API
   // ============================================
 

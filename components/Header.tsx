@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FaQuestionCircle, FaBell, FaSearch, FaGlobe, FaBars } from 'react-icons/fa'
 import AlertModal from '@/components/modals/AlertModal'
+import { api } from '@/lib/api-client'
 
 interface HeaderProps {
   title?: string
@@ -13,13 +14,38 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
   const [showBalanceModal, setShowBalanceModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
-  const [balance, setBalance] = useState(52.88)
+  const [balance, setBalance] = useState(0)
+  const [loadingBalance, setLoadingBalance] = useState(true)
   const [topUpAmount, setTopUpAmount] = useState('')
+  const [adding, setAdding] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' | 'warning' }>({
     isOpen: false,
     message: '',
     type: 'info'
   })
+
+  // Fetch balance on mount
+  useEffect(() => {
+    fetchBalance()
+  }, [])
+
+  const fetchBalance = async () => {
+    try {
+      setLoadingBalance(true)
+      const { data, error } = await api.billing.getBalance()
+      
+      if (error) {
+        console.error('Failed to fetch balance:', error)
+        return
+      }
+      
+      setBalance(data?.balance || 0)
+    } catch (error) {
+      console.error('Error fetching balance:', error)
+    } finally {
+      setLoadingBalance(false)
+    }
+  }
 
   const notifications = [
     { id: 1, text: 'Campaign "NB Users" sent successfully', time: '2 hours ago', unread: true },
@@ -29,7 +55,7 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
 
   const unreadCount = notifications.filter(n => n.unread).length
 
-  const handleTopUp = () => {
+  const handleTopUp = async () => {
     const amount = parseFloat(topUpAmount)
     if (isNaN(amount) || amount <= 0) {
       setAlertModal({
@@ -40,15 +66,39 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
       })
       return
     }
-    setBalance(balance + amount)
-    setTopUpAmount('')
-    setShowBalanceModal(false)
-    setAlertModal({
-      isOpen: true,
-      message: `Successfully added $${amount.toFixed(2)} to your balance!`,
-      title: 'Success',
-      type: 'success'
-    })
+    
+    try {
+      setAdding(true)
+      const { data, error } = await api.billing.addFunds({
+        amount,
+        paymentMethod: 'manual',
+        description: `Added $${amount.toFixed(2)} credits`
+      })
+      
+      if (error) {
+        throw new Error(error)
+      }
+      
+      setBalance(data?.balance || 0)
+      setTopUpAmount('')
+      setShowBalanceModal(false)
+      setAlertModal({
+        isOpen: true,
+        message: `Successfully added $${amount.toFixed(2)} to your balance!`,
+        title: 'Success',
+        type: 'success'
+      })
+    } catch (error: any) {
+      console.error('Add funds error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to add funds',
+        title: 'Error',
+        type: 'error'
+      })
+    } finally {
+      setAdding(false)
+    }
   }
 
   return (
@@ -70,10 +120,13 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
             {/* Balance */}
             <div className="text-xs md:text-sm flex items-center">
               <span className="text-gray-600 hidden sm:inline">Balance: </span>
-              <span className="font-semibold text-gray-900 ml-1">${balance.toFixed(2)}</span>
+              <span className="font-semibold text-gray-900 ml-1">
+                {loadingBalance ? '...' : `$${balance.toFixed(2)}`}
+              </span>
               <button 
                 onClick={() => setShowBalanceModal(true)}
                 className="ml-1 md:ml-2 text-green-600 hover:text-green-700 font-bold"
+                disabled={loadingBalance}
               >
                 +
               </button>
@@ -213,16 +266,18 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
             <div className="flex space-x-4">
               <button
                 onClick={handleTopUp}
-                className="flex-1 px-6 py-3 bg-green-500 text-white font-medium rounded-md hover:bg-green-600 transition-colors"
+                disabled={adding}
+                className="flex-1 px-6 py-3 bg-green-500 text-white font-medium rounded-md hover:bg-green-600 transition-colors disabled:bg-green-300 disabled:cursor-not-allowed"
               >
-                Add Funds
+                {adding ? 'Adding...' : 'Add Funds'}
               </button>
               <button
                 onClick={() => {
                   setShowBalanceModal(false)
                   setTopUpAmount('')
                 }}
-                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-md hover:bg-gray-300 transition-colors"
+                disabled={adding}
+                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-md hover:bg-gray-300 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

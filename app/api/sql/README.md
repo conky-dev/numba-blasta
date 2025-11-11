@@ -42,17 +42,27 @@ This directory contains the SQL schema files for the SMSblast application. These
    - Links to templates and contact lists
    - Helper functions: `is_campaign_editable()`, `get_campaign_metrics()`
 
+7. **07_contacts.sql** - Contact management
+   - Store contacts with phone, name, email
+   - Org-scoped with unique phone per org
+   - Opt-out tracking
+   - Soft delete support
+   - Full-text search on name, email, phone
+
+8. **08_billing_balance.sql** - Billing and balance management
+   - SMS credit balance tracking (adds `sms_balance` to organizations)
+   - Full transaction history (purchases, SMS sends, refunds)
+   - Helper functions: `add_credits()`, `deduct_credits()`, `has_sufficient_balance()`
+   - Prevents negative balance
+   - Atomic transactions with row locking
+
 ## Setup Instructions
 
 1. Go to your Supabase project dashboard
 2. Navigate to the SQL Editor
-3. Run each file in order (01, 02, 03, 04, 05, 06)
+3. Run each file in order (01, 02, 03, 04, 05, 06, 07, 08)
 4. Verify tables are created successfully
-5. Manually insert your first super admin:
-   ```sql
-   INSERT INTO admins (user_id, role, permissions)
-   VALUES ('your-user-uuid-here', 'super_admin', '{"full_access": true}'::jsonb);
-   ```
+5. Use `setup_existing_user.sql` to assign your user to an org if needed
 
 ## Admin Roles
 
