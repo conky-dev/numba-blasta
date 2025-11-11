@@ -13,10 +13,6 @@ export async function GET(
   try {
     // Authenticate request
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated || !authResult.userId || !authResult.orgId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { orgId } = authResult;
     const { id: contactId } = await params;
 
@@ -39,8 +35,13 @@ export async function GET(
   } catch (error: any) {
     console.error('Get contact error:', error);
     
-    if (error.message.includes('token') || error.message.includes('authentication')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (error.message?.includes('token') || 
+        error.message?.includes('authentication') ||
+        error.message?.includes('organization')) {
+      return NextResponse.json({ 
+        error: 'Unauthorized',
+        details: error.message 
+      }, { status: 401 });
     }
     
     return NextResponse.json(
@@ -61,10 +62,6 @@ export async function PATCH(
   try {
     // Authenticate request
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated || !authResult.userId || !authResult.orgId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { orgId } = authResult;
     const { id: contactId } = await params;
     const body = await request.json();
@@ -155,8 +152,13 @@ export async function PATCH(
   } catch (error: any) {
     console.error('Update contact error:', error);
     
-    if (error.message.includes('token') || error.message.includes('authentication')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (error.message?.includes('token') || 
+        error.message?.includes('authentication') ||
+        error.message?.includes('organization')) {
+      return NextResponse.json({ 
+        error: 'Unauthorized',
+        details: error.message 
+      }, { status: 401 });
     }
     
     return NextResponse.json(
@@ -177,10 +179,6 @@ export async function DELETE(
   try {
     // Authenticate request
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated || !authResult.userId || !authResult.orgId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { orgId } = authResult;
     const { id: contactId } = await params;
 
@@ -203,8 +201,13 @@ export async function DELETE(
   } catch (error: any) {
     console.error('Delete contact error:', error);
     
-    if (error.message.includes('token') || error.message.includes('authentication')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (error.message?.includes('token') || 
+        error.message?.includes('authentication') ||
+        error.message?.includes('organization')) {
+      return NextResponse.json({ 
+        error: 'Unauthorized',
+        details: error.message 
+      }, { status: 401 });
     }
     
     return NextResponse.json(

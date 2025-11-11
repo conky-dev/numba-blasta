@@ -15,10 +15,12 @@ export async function GET(request: NextRequest) {
     
     const search = searchParams.get('search') || '';
     const limit = parseInt(searchParams.get('limit') || '20'); // Default 20 per page
-    const cursor = searchParams.get('cursor');
+    const offset = parseInt(searchParams.get('offset') || '0'); // Default offset 0
+    const cursor = searchParams.get('cursor'); // Legacy cursor support
 
     // Validate limit (max 100)
     const validLimit = Math.min(Math.max(limit, 1), 100);
+    const validOffset = Math.max(offset, 0);
 
     // Build query
     let sqlQuery = `
@@ -43,29 +45,41 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    // Cursor pagination (using created_at and id for stable sorting)
-    if (cursor) {
+    // Use offset-based pagination if offset is provided, otherwise use cursor
+    if (cursor && !searchParams.has('offset')) {
+      // Legacy cursor pagination (using created_at and id for stable sorting)
       sqlQuery += ` AND (created_at, id) < (
         SELECT created_at, id FROM contacts WHERE id = $${paramIndex} AND org_id = $1
       )`;
       params.push(cursor);
       paramIndex++;
+      
+      // Order and limit - fetch one extra to determine if there are more
+      sqlQuery += ` ORDER BY created_at DESC, id DESC LIMIT $${paramIndex}`;
+      params.push(validLimit + 1);
+    } else {
+      // Offset-based pagination
+      sqlQuery += ` ORDER BY created_at DESC, id DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(validLimit, validOffset);
+      paramIndex += 2;
     }
-
-    // Order and limit - fetch one extra to determine if there are more
-    sqlQuery += ` ORDER BY created_at DESC, id DESC LIMIT $${paramIndex}`;
-    params.push(validLimit + 1);
 
     const result = await query(sqlQuery, params);
 
-    // Check if there are more results
-    const hasMore = result.rows.length > validLimit;
-    const contacts = hasMore ? result.rows.slice(0, validLimit) : result.rows;
-    const nextCursor = hasMore && contacts.length > 0 
-      ? contacts[contacts.length - 1].id 
-      : null;
+    // For cursor pagination, check if there are more results
+    let hasMore = false;
+    let contacts = result.rows;
+    let nextCursor = null;
 
-    // Get total count for this org (optional, but useful for UI)
+    if (cursor && !searchParams.has('offset')) {
+      hasMore = result.rows.length > validLimit;
+      contacts = hasMore ? result.rows.slice(0, validLimit) : result.rows;
+      nextCursor = hasMore && contacts.length > 0 
+        ? contacts[contacts.length - 1].id 
+        : null;
+    }
+
+    // Get total count for this org (for offset-based pagination)
     const countResult = await query(
       `SELECT COUNT(*)::integer as total
        FROM contacts
