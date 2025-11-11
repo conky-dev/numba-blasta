@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hashPassword } from '../../_lib/auth-utils';
-import { query } from '../../_lib/db';
+import { hashPassword } from '@/lib/auth-utils';
+import { query } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,9 +61,11 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ auth.users created');
 
-    // The trigger will automatically create the user_profiles entry
-    // Wait a moment for trigger to complete
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // The triggers will automatically create:
+    // 1. user_profiles entry (from 01_user_profiles.sql trigger)
+    // 2. organizations + organization_members (from 04_organizations.sql trigger)
+    // Wait a moment for triggers to complete
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     // Verify profile was created
     const profileCheck = await query(
@@ -77,6 +79,33 @@ export async function POST(request: NextRequest) {
         `INSERT INTO user_profiles (user_id, full_name, sms_balance)
          VALUES ($1, $2, 0.00)`,
         [userId, fullName || '']
+      );
+    }
+
+    // Verify organization was created
+    const orgCheck = await query(
+      'SELECT org_id FROM organization_members WHERE user_id = $1',
+      [userId]
+    );
+
+    if (orgCheck.rows.length === 0) {
+      console.warn('⚠️  Organization not created by trigger, creating manually...');
+      
+      // Create organization
+      const orgResult = await query(
+        `INSERT INTO organizations (name, email)
+         VALUES ($1, $2)
+         RETURNING id`,
+        [`${fullName || 'User'}'s Organization`, email]
+      );
+      
+      const orgId = orgResult.rows[0].id;
+      
+      // Add user as owner
+      await query(
+        `INSERT INTO organization_members (org_id, user_id, role)
+         VALUES ($1, $2, 'owner')`,
+        [orgId, userId]
       );
     }
 

@@ -1,25 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MdEdit, MdDelete } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 
 interface Template {
-  id: number
+  id: string
   name: string
-  message: string
-  createdAt: string
+  content: string
+  variables?: string[]
+  created_at: string
+  updated_at: string
 }
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([])
+  const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     message: ''
   })
+  const [searchQuery, setSearchQuery] = useState('')
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -31,7 +35,70 @@ export default function TemplatesPage() {
     onConfirm: () => {}
   })
 
-  const handleSave = () => {
+  // Fetch templates on mount
+  useEffect(() => {
+    fetchTemplates()
+  }, [])
+
+  const getAuthToken = () => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('auth_token')
+    }
+    return null
+  }
+
+  const fetchTemplates = async (search?: string) => {
+    try {
+      setLoading(true)
+      const token = getAuthToken()
+      
+      if (!token) {
+        setAlertModal({
+          isOpen: true,
+          message: 'Please log in to view templates',
+          title: 'Authentication Required',
+          type: 'error'
+        })
+        return
+      }
+
+      const url = search 
+        ? `/api/templates?search=${encodeURIComponent(search)}`
+        : '/api/templates'
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch templates')
+      }
+
+      const data = await response.json()
+      setTemplates(data.templates || [])
+    } catch (error: any) {
+      console.error('Fetch templates error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to load templates',
+        title: 'Error',
+        type: 'error'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query)
+    if (query.length >= 2 || query.length === 0) {
+      fetchTemplates(query)
+    }
+  }
+
+  const handleSave = async () => {
     if (!formData.name || !formData.message) {
       setAlertModal({
         isOpen: true,
@@ -42,42 +109,121 @@ export default function TemplatesPage() {
       return
     }
 
-    if (editingTemplate) {
-      // Update existing template
-      setTemplates(templates.map(t => 
-        t.id === editingTemplate.id 
-          ? { ...t, name: formData.name, message: formData.message }
-          : t
-      ))
-    } else {
-      // Create new template
-      const newTemplate: Template = {
-        id: templates.length + 1,
-        name: formData.name,
-        message: formData.message,
-        createdAt: new Date().toLocaleDateString()
+    try {
+      const token = getAuthToken()
+      
+      if (!token) {
+        setAlertModal({
+          isOpen: true,
+          message: 'Please log in to save template',
+          title: 'Authentication Required',
+          type: 'error'
+        })
+        return
       }
-      setTemplates([...templates, newTemplate])
-    }
 
-    setShowModal(false)
-    setFormData({ name: '', message: '' })
-    setEditingTemplate(null)
+      const url = editingTemplate 
+        ? `/api/templates/${editingTemplate.id}`
+        : '/api/templates'
+      
+      const method = editingTemplate ? 'PATCH' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          content: formData.message
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to save template')
+      }
+
+      setAlertModal({
+        isOpen: true,
+        message: editingTemplate ? 'Template updated successfully!' : 'Template created successfully!',
+        title: 'Success',
+        type: 'success'
+      })
+
+      // Refresh templates list
+      await fetchTemplates(searchQuery)
+
+      setShowModal(false)
+      setFormData({ name: '', message: '' })
+      setEditingTemplate(null)
+    } catch (error: any) {
+      console.error('Save template error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to save template',
+        title: 'Error',
+        type: 'error'
+      })
+    }
   }
 
   const handleEdit = (template: Template) => {
     setEditingTemplate(template)
-    setFormData({ name: template.name, message: template.message })
+    setFormData({ name: template.name, message: template.content })
     setShowModal(true)
   }
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: string) => {
     setConfirmModal({
       isOpen: true,
       message: 'Are you sure you want to delete this template? This action cannot be undone.',
       title: 'Delete Template',
-      onConfirm: () => {
-        setTemplates(templates.filter(t => t.id !== id))
+      onConfirm: async () => {
+        try {
+          const token = getAuthToken()
+          
+          if (!token) {
+            setAlertModal({
+              isOpen: true,
+              message: 'Please log in to delete template',
+              title: 'Authentication Required',
+              type: 'error'
+            })
+            return
+          }
+
+          const response = await fetch(`/api/templates/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+
+          if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || 'Failed to delete template')
+          }
+
+          setAlertModal({
+            isOpen: true,
+            message: 'Template deleted successfully',
+            title: 'Success',
+            type: 'success'
+          })
+
+          // Refresh templates list
+          await fetchTemplates(searchQuery)
+        } catch (error: any) {
+          console.error('Delete template error:', error)
+          setAlertModal({
+            isOpen: true,
+            message: error.message || 'Failed to delete template',
+            title: 'Error',
+            type: 'error'
+          })
+        }
       }
     })
   }
@@ -90,19 +236,35 @@ export default function TemplatesPage() {
 
   return (
     <div className="p-4 md:p-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <h1 className="text-xl md:text-2xl font-semibold text-gray-800">SMS Templates</h1>
-        {templates.length > 0 && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-          >
-            + Add Template
-          </button>
-        )}
+        <div className="flex flex-col md:flex-row gap-2 md:gap-4">
+          <input
+            type="text"
+            placeholder="Search templates..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          {templates.length > 0 && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors whitespace-nowrap"
+            >
+              + Add Template
+            </button>
+          )}
+        </div>
       </div>
 
-      {templates.length === 0 ? (
+      {loading ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-12">
+          <div className="max-w-md mx-auto text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading templates...</p>
+          </div>
+        </div>
+      ) : templates.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-12">
           <div className="max-w-md mx-auto text-center">
             <div className="mb-6">
@@ -140,8 +302,15 @@ export default function TemplatesPage() {
                   </button>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 mb-3 line-clamp-3">{template.message}</p>
-              <div className="text-xs text-gray-400">Created: {template.createdAt}</div>
+              <p className="text-sm text-gray-600 mb-3 line-clamp-3">{template.content}</p>
+              {template.variables && template.variables.length > 0 && (
+                <div className="text-xs text-gray-500 mb-2">
+                  Variables: {template.variables.map(v => `{{${v}}}`).join(', ')}
+                </div>
+              )}
+              <div className="text-xs text-gray-400">
+                Created: {new Date(template.created_at).toLocaleDateString()}
+              </div>
             </div>
           ))}
         </div>
@@ -184,7 +353,7 @@ export default function TemplatesPage() {
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
                 <p className="text-sm text-blue-800">
-                  <strong>Tip:</strong> Use placeholders like [FirstName], [LastName], [Company] to personalize your messages
+                  <strong>Tip:</strong> Use placeholders like {`{{firstName}}`}, {`{{lastName}}`}, {`{{company}}`} to personalize your messages
                 </p>
               </div>
             </div>
