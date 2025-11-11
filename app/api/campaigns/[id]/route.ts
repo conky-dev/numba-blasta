@@ -53,13 +53,13 @@ export async function GET(
     // Calculate metrics
     const deliveryRate = campaign.sent_count > 0 
       ? ((campaign.delivered_count / campaign.sent_count) * 100).toFixed(2)
-      : 0;
+      : '0';
     const failRate = campaign.sent_count > 0 
       ? ((campaign.failed_count / campaign.sent_count) * 100).toFixed(2)
-      : 0;
+      : '0';
     const replyRate = campaign.delivered_count > 0 
       ? ((campaign.replied_count / campaign.delivered_count) * 100).toFixed(2)
-      : 0;
+      : '0';
 
     return NextResponse.json({
       campaign: {

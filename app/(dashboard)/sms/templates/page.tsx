@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { MdEdit, MdDelete } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import { api } from '@/lib/api-client'
 
 interface Template {
   id: string
@@ -40,44 +41,19 @@ export default function TemplatesPage() {
     fetchTemplates()
   }, [])
 
-  const getAuthToken = () => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('auth_token')
-    }
-    return null
-  }
-
   const fetchTemplates = async (search?: string) => {
     try {
       setLoading(true)
-      const token = getAuthToken()
-      
-      if (!token) {
-        setAlertModal({
-          isOpen: true,
-          message: 'Please log in to view templates',
-          title: 'Authentication Required',
-          type: 'error'
-        })
-        return
-      }
 
-      const url = search 
-        ? `/api/templates?search=${encodeURIComponent(search)}`
-        : '/api/templates'
-
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const { data, error } = await api.templates.list({
+        search: search || undefined,
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch templates')
+      if (error) {
+        throw new Error(error)
       }
 
-      const data = await response.json()
-      setTemplates(data.templates || [])
+      setTemplates(data?.templates || [])
     } catch (error: any) {
       console.error('Fetch templates error:', error)
       setAlertModal({
@@ -110,39 +86,18 @@ export default function TemplatesPage() {
     }
 
     try {
-      const token = getAuthToken()
-      
-      if (!token) {
-        setAlertModal({
-          isOpen: true,
-          message: 'Please log in to save template',
-          title: 'Authentication Required',
-          type: 'error'
-        })
-        return
-      }
+      const { error } = editingTemplate
+        ? await api.templates.update(editingTemplate.id, {
+            name: formData.name,
+            content: formData.message
+          })
+        : await api.templates.create({
+            name: formData.name,
+            content: formData.message
+          })
 
-      const url = editingTemplate 
-        ? `/api/templates/${editingTemplate.id}`
-        : '/api/templates'
-      
-      const method = editingTemplate ? 'PATCH' : 'POST'
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          content: formData.message
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to save template')
+      if (error) {
+        throw new Error(error)
       }
 
       setAlertModal({
@@ -182,28 +137,10 @@ export default function TemplatesPage() {
       title: 'Delete Template',
       onConfirm: async () => {
         try {
-          const token = getAuthToken()
-          
-          if (!token) {
-            setAlertModal({
-              isOpen: true,
-              message: 'Please log in to delete template',
-              title: 'Authentication Required',
-              type: 'error'
-            })
-            return
-          }
+          const { error } = await api.templates.delete(id)
 
-          const response = await fetch(`/api/templates/${id}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          })
-
-          if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || 'Failed to delete template')
+          if (error) {
+            throw new Error(error)
           }
 
           setAlertModal({

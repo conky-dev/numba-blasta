@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { MdDashboard, MdContacts, MdMessage, MdLogout } from 'react-icons/md'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import { api } from '@/lib/api-client'
 
 const menuItems = [
   { 
@@ -57,14 +58,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const handleLogout = async () => {
     try {
-      // Call logout API
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-      })
-
-      // Clear local storage
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('user')
+      // Call logout API (automatically clears localStorage)
+      await api.auth.logout()
 
       // Redirect to login
       router.push('/')

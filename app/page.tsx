@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MdEmail, MdLock, MdVisibility, MdVisibilityOff } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
+import { api } from '@/lib/api-client'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -33,23 +34,12 @@ export default function LoginPage() {
     setIsLoading(true)
     
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      })
+      const { data, error } = await api.auth.login(email, password)
 
-      const data = await response.json()
-
-      if (!response.ok) {
+      if (error) {
         setAlertModal({
           isOpen: true,
-          message: data.error || 'Invalid email or password',
+          message: error || 'Invalid email or password',
           title: 'Login Failed',
           type: 'error'
         })
@@ -58,7 +48,7 @@ export default function LoginPage() {
       }
 
       // Store session in localStorage
-      if (data.token) {
+      if (data?.token) {
         localStorage.setItem('auth_token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
       }

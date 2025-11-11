@@ -1,32 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AlertModal from '@/components/modals/AlertModal'
 import { api } from '@/lib/api-client'
 
-interface Campaign {
+interface EditCampaignData {
+  id: string
   name: string
-  from: string
-  message: string
-  recipients: string
+  message?: string
+  schedule_at?: string
 }
 
-interface CreateCampaignModalProps {
+interface EditCampaignModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  campaign: any
 }
 
-export default function CreateCampaignModal({
+export default function EditCampaignModal({
   isOpen,
   onClose,
-  onSuccess
-}: CreateCampaignModalProps) {
-  const [formData, setFormData] = useState<Campaign>({
+  onSuccess,
+  campaign
+}: EditCampaignModalProps) {
+  const [formData, setFormData] = useState({
     name: '',
-    from: 'smart',
     message: '',
-    recipients: ''
+    schedule_at: ''
   })
   const [isLoading, setIsLoading] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
@@ -35,7 +36,17 @@ export default function CreateCampaignModal({
     type: 'info'
   })
 
-  if (!isOpen) return null
+  useEffect(() => {
+    if (campaign) {
+      setFormData({
+        name: campaign.name || '',
+        message: campaign.message || '',
+        schedule_at: campaign.schedule_at || ''
+      })
+    }
+  }, [campaign])
+
+  if (!isOpen || !campaign) return null
 
   const handleSubmit = async () => {
     if (!formData.name || !formData.message) {
@@ -51,10 +62,10 @@ export default function CreateCampaignModal({
     setIsLoading(true)
 
     try {
-      const { error } = await api.campaigns.create({
+      const { error } = await api.campaigns.update(campaign.id!, {
         name: formData.name,
         message: formData.message,
-        // listId: formData.recipients, // Will be added when contact lists are implemented
+        scheduleAt: formData.schedule_at || undefined,
       })
 
       if (error) {
@@ -63,14 +74,11 @@ export default function CreateCampaignModal({
 
       setAlertModal({
         isOpen: true,
-        message: 'Campaign created successfully!',
+        message: 'Campaign updated successfully!',
         title: 'Success',
         type: 'success'
       })
 
-      // Reset form
-      setFormData({ name: '', from: 'smart', message: '', recipients: '' })
-      
       // Wait a moment to show success message, then close and refresh
       setTimeout(() => {
         setAlertModal({ ...alertModal, isOpen: false })
@@ -78,10 +86,10 @@ export default function CreateCampaignModal({
         onSuccess()
       }, 1500)
     } catch (error: any) {
-      console.error('Create campaign error:', error)
+      console.error('Update campaign error:', error)
       setAlertModal({
         isOpen: true,
-        message: error.message || 'Failed to create campaign',
+        message: error.message || 'Failed to update campaign',
         title: 'Error',
         type: 'error'
       })
@@ -93,14 +101,14 @@ export default function CreateCampaignModal({
   const handleClose = () => {
     if (!isLoading) {
       onClose()
-      setFormData({ name: '', from: 'smart', message: '', recipients: '' })
+      setFormData({ name: '', message: '', schedule_at: '' })
     }
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-semibold mb-4">Create New Campaign</h2>
+        <h2 className="text-xl font-semibold mb-4">Edit Campaign</h2>
         <div className="space-y-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -116,30 +124,15 @@ export default function CreateCampaignModal({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              From
-            </label>
-            <select
-              value={formData.from}
-              onChange={(e) => setFormData({ ...formData, from: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="smart">Smart Senders</option>
-              <option value="+1234567890">+1 (234) 567-890</option>
-              <option value="+1098765432">+1 (098) 765-432</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Recipients (Upload List)
+              Schedule For (Optional)
             </label>
             <input
-              type="number"
-              value={formData.recipients}
-              onChange={(e) => setFormData({ ...formData, recipients: e.target.value })}
+              type="datetime-local"
+              value={formData.schedule_at}
+              onChange={(e) => setFormData({ ...formData, schedule_at: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Number of recipients"
             />
-            <p className="mt-1 text-xs text-gray-500">In production, this would be a file upload for contact lists</p>
+            <p className="mt-1 text-xs text-gray-500">Leave empty to keep as draft</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -161,7 +154,7 @@ export default function CreateCampaignModal({
             disabled={isLoading}
             className="flex-1 px-6 py-3 bg-blue-500 text-white font-medium rounded-md hover:bg-blue-600 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Creating...' : 'Create Campaign'}
+            {isLoading ? 'Updating...' : 'Update Campaign'}
           </button>
           <button
             onClick={handleClose}

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaEnvelope, FaLock, FaUser } from 'react-icons/fa';
 import AlertModal from '@/components/modals/AlertModal';
+import { api } from '@/lib/api-client';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
-    type: 'success' | 'error' | 'info' | 'warning' | 'danger';
+    type: 'success' | 'error' | 'info' | 'warning';
     title: string;
     message: string;
   }>({
@@ -61,27 +62,16 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          fullName,
-        }),
-      });
+      const { data, error } = await api.auth.signup(email, password, fullName);
 
-      const data = await response.json();
-
-      if (!response.ok) {
+      if (error) {
         setAlertModal({
           isOpen: true,
           type: 'error',
           title: 'Signup Failed',
-          message: data.error || 'An error occurred during signup',
+          message: error || 'An error occurred during signup',
         });
+        setIsLoading(false);
         return;
       }
 
@@ -90,7 +80,7 @@ export default function SignupPage() {
         isOpen: true,
         type: 'success',
         title: 'Account Created!',
-        message: data.message || 'Your account has been created successfully',
+        message: data?.message || 'Your account has been created successfully',
       });
 
       // Redirect to login after 2 seconds
