@@ -21,11 +21,25 @@ This directory contains the SQL schema files for the SMSblast application. These
    - Helper functions: `is_admin()` and `is_super_admin()`
    - Only admins can view, only super admins can modify
 
+4. **04_organizations.sql** - Organization/account management
+   - Core entity for multi-tenancy (all resources scoped to org)
+   - Auto-creates org for each new user (1 user = 1 org for now)
+   - Stores billing balance and Twilio credentials at org level
+   - Organization members with roles (owner, admin, member)
+   - Helper functions: `get_user_org_id()`, `is_org_owner()`, `is_org_admin()`
+
+5. **05_sms_templates.sql** - SMS message templates
+   - Reusable message templates with variable placeholders (e.g., `{{firstName}}`)
+   - Org-scoped templates
+   - Soft delete support
+   - Full-text search on name and content
+   - Tracks creator and timestamps
+
 ## Setup Instructions
 
 1. Go to your Supabase project dashboard
 2. Navigate to the SQL Editor
-3. Run each file in order (01, 02, 03)
+3. Run each file in order (01, 02, 03, 04, 05)
 4. Verify tables are created successfully
 5. Manually insert your first super admin:
    ```sql
