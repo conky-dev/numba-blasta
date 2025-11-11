@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MdSearch, MdPhoneIphone, MdMoreVert } from 'react-icons/md'
 
 interface Message {
   id: number
@@ -25,7 +26,7 @@ const initialConversations: Conversation[] = [
     name: '+17867158749', 
     preview: 'https://www.jw.org/finder/?wtl...', 
     time: '22d', 
-    avatar: '🔍',
+    avatar: 'MdSearch',
     messages: [
       { id: 1, text: 'https://www.jw.org/finder/?wtlocale=E&docid=1011214&srcid=share', timestamp: '10:30 AM', isOutgoing: false }
     ]
@@ -35,7 +36,7 @@ const initialConversations: Conversation[] = [
     name: '+19412033291', 
     preview: 'Is this Gio?', 
     time: '29d', 
-    avatar: '🔍',
+    avatar: 'MdSearch',
     messages: [
       { id: 1, text: 'Is this Gio?', timestamp: '3:45 PM', isOutgoing: false }
     ]
@@ -127,7 +128,7 @@ export default function MessengerPage() {
       name: phoneNumber,
       preview: 'New conversation',
       time: 'Just now',
-      avatar: '📱',
+      avatar: 'MdPhoneIphone',
       messages: []
     }
 
@@ -159,7 +160,7 @@ export default function MessengerPage() {
               <option value="read">Read</option>
             </select>
             <button className="p-2 text-gray-500 hover:text-gray-700">
-              ⋮
+              <MdMoreVert className="w-5 h-5" />
             </button>
           </div>
           <input
@@ -188,7 +189,8 @@ export default function MessengerPage() {
                   </div>
                 ) : (
                   <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-sm flex-shrink-0">
-                    {conv.avatar}
+                    {conv.avatar === 'MdSearch' && <MdSearch className="w-5 h-5" />}
+                    {conv.avatar === 'MdPhoneIphone' && <MdPhoneIphone className="w-5 h-5" />}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
@@ -225,7 +227,8 @@ export default function MessengerPage() {
                   </div>
                 ) : (
                   <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-sm">
-                    {selectedConversation.avatar}
+                    {selectedConversation.avatar === 'MdSearch' && <MdSearch className="w-5 h-5" />}
+                    {selectedConversation.avatar === 'MdPhoneIphone' && <MdPhoneIphone className="w-5 h-5" />}
                   </div>
                 )}
                 <div>
@@ -234,7 +237,7 @@ export default function MessengerPage() {
                 </div>
               </div>
               <button className="p-2 text-gray-500 hover:text-gray-700">
-                ⋮
+                <MdMoreVert className="w-5 h-5" />
               </button>
             </div>
 

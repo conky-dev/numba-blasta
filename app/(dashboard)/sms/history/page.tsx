@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MdClose, MdUnfoldMore, MdArrowUpward, MdArrowDownward } from 'react-icons/md'
 
 interface SMSMessage {
   id: number
@@ -117,8 +118,10 @@ export default function HistoryPage() {
   })
 
   const getSortIcon = (field: keyof SMSMessage) => {
-    if (sortField !== field) return '↕'
-    return sortDirection === 'asc' ? '↑' : '↓'
+    if (sortField !== field) return <MdUnfoldMore className="inline w-4 h-4 ml-1" />
+    return sortDirection === 'asc' 
+      ? <MdArrowUpward className="inline w-4 h-4 ml-1" />
+      : <MdArrowDownward className="inline w-4 h-4 ml-1" />
   }
 
   const handleExport = () => {
@@ -201,7 +204,7 @@ export default function HistoryPage() {
               className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
               title="Clear filters"
             >
-              ✕
+              <MdClose className="w-5 h-5" />
             </button>
             <select 
               value={searchField}

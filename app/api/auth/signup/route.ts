@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🔐 Creating user account:', email);
+    console.log('[AUTH] Creating user account:', email);
 
     // Check if user already exists in auth.users
     const existingAuthUser = await query(
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const userId = userIdResult.rows[0].id;
 
     // Create auth.users entry
-    console.log('📝 Creating auth.users entry...');
+    console.log('[AUTH] Creating auth.users entry...');
     await query(
       `INSERT INTO auth.users (
         id,
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       [userId, email, hashedPassword, JSON.stringify({ full_name: fullName || '' })]
     );
 
-    console.log('✅ auth.users created');
+    console.log('[SUCCESS] auth.users created');
 
     // The triggers will automatically create:
     // 1. user_profiles entry (from 01_user_profiles.sql trigger)
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (profileCheck.rows.length === 0) {
-      console.warn('⚠️  Profile not created by trigger, creating manually...');
+      console.warn('[WARNING] Profile not created by trigger, creating manually...');
       await query(
         `INSERT INTO user_profiles (user_id, full_name, sms_balance)
          VALUES ($1, $2, 0.00)`,
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (orgCheck.rows.length === 0) {
-      console.warn('⚠️  Organization not created by trigger, creating manually...');
+      console.warn('[WARNING] Organization not created by trigger, creating manually...');
       
       // Create organization
       const orgResult = await query(
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('✅ User account created successfully');
+    console.log('[SUCCESS] User account created successfully');
 
     return NextResponse.json({
       success: true,

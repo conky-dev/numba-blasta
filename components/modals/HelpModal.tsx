@@ -1,6 +1,6 @@
 'use client'
 
-import { MdClose, MdMessage, MdContacts, MdCampaign, MdDescription, MdAccountBalanceWallet, MdHelp } from 'react-icons/md'
+import { MdClose, MdMessage, MdContacts, MdCampaign, MdDescription, MdAccountBalanceWallet, MdHelp, MdRocketLaunch, MdPhoneIphone, MdAttachMoney, MdKeyboard, MdEmail, MdMenuBook, MdChat } from 'react-icons/md'
 
 interface HelpModalProps {
   isOpen: boolean
@@ -96,7 +96,10 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
         <div className="overflow-y-auto p-6 space-y-6">
           {/* Quick Start */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200">
-            <h3 className="text-lg font-semibold text-blue-900 mb-3">🚀 Quick Start Guide</h3>
+            <div className="flex items-center space-x-2 mb-3">
+              <MdRocketLaunch className="w-6 h-6 text-blue-600" />
+              <h3 className="text-lg font-semibold text-blue-900">Quick Start Guide</h3>
+            </div>
             <ol className="space-y-2 text-sm text-blue-800">
               <li><strong>1. Add Contacts:</strong> Import your contact list via CSV or add them manually</li>
               <li><strong>2. Add Balance:</strong> Click the '+' button in the header to add SMS credits</li>
@@ -141,9 +144,12 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
           {/* Phone Format Info */}
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5">
-            <h4 className="text-lg font-semibold text-yellow-900 mb-2">
-              📱 Phone Number Format (E.164)
-            </h4>
+            <div className="flex items-center space-x-2 mb-2">
+              <MdPhoneIphone className="w-6 h-6 text-yellow-700" />
+              <h4 className="text-lg font-semibold text-yellow-900">
+                Phone Number Format (E.164)
+              </h4>
+            </div>
             <p className="text-sm text-yellow-800 mb-3">
               All phone numbers must be in international E.164 format for SMS delivery to work correctly.
             </p>
@@ -169,9 +175,12 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
           {/* Pricing Info */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-5">
-            <h4 className="text-lg font-semibold text-green-900 mb-2">
-              💰 SMS Pricing
-            </h4>
+            <div className="flex items-center space-x-2 mb-2">
+              <MdAttachMoney className="w-6 h-6 text-green-700" />
+              <h4 className="text-lg font-semibold text-green-900">
+                SMS Pricing
+              </h4>
+            </div>
             <div className="space-y-2 text-sm text-green-800">
               <p><strong>$0.01 per SMS segment</strong> (160 characters)</p>
               <p>Message length determines segments:</p>
@@ -188,9 +197,12 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
           {/* Keyboard Shortcuts */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-            <h4 className="text-lg font-semibold text-gray-900 mb-3">
-              ⌨️ Keyboard Shortcuts
-            </h4>
+            <div className="flex items-center space-x-2 mb-3">
+              <MdKeyboard className="w-6 h-6 text-gray-700" />
+              <h4 className="text-lg font-semibold text-gray-900">
+                Keyboard Shortcuts
+              </h4>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-gray-700">Search</span>
@@ -228,14 +240,17 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
               If you need additional assistance or have questions not covered in this guide:
             </p>
             <div className="space-y-2 text-sm">
-              <p className="text-gray-700">
-                📧 Email: <a href="mailto:support@smsblast.com" className="text-blue-600 hover:underline">support@smsblast.com</a>
+              <p className="text-gray-700 flex items-center space-x-2">
+                <MdEmail className="w-4 h-4 text-gray-600" />
+                <span>Email: <a href="mailto:support@smsblast.com" className="text-blue-600 hover:underline">support@smsblast.com</a></span>
               </p>
-              <p className="text-gray-700">
-                📚 Documentation: <a href="#" className="text-blue-600 hover:underline">docs.smsblast.com</a>
+              <p className="text-gray-700 flex items-center space-x-2">
+                <MdMenuBook className="w-4 h-4 text-gray-600" />
+                <span>Documentation: <a href="#" className="text-blue-600 hover:underline">docs.smsblast.com</a></span>
               </p>
-              <p className="text-gray-700">
-                💬 Live Chat: Click the chat icon in the bottom right
+              <p className="text-gray-700 flex items-center space-x-2">
+                <MdChat className="w-4 h-4 text-gray-600" />
+                <span>Live Chat: Click the chat icon in the bottom right</span>
               </p>
             </div>
           </div>
