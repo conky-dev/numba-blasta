@@ -16,6 +16,17 @@ console.log('🌍 Environment:', process.env.RAILWAY_ENVIRONMENT || 'local');
 console.log('🔢 Node version:', process.version);
 console.log('');
 
+// Validate required environment variables
+if (!process.env.REDIS_URL) {
+  console.error('❌ FATAL: REDIS_URL not set');
+  process.exit(1);
+}
+
+if (!process.env.DATABASE_URL) {
+  console.error('❌ FATAL: DATABASE_URL not set');
+  process.exit(1);
+}
+
 // Create dedicated database pool for worker with proper SSL config
 const dbPool = new Pool({
   connectionString: process.env.DATABASE_URL!,
@@ -39,6 +50,7 @@ async function query(sql: string, params?: any[]) {
 }
 
 // Connect to Redis with keepalive to prevent connection drops
+console.log('[REDIS] Connecting to Redis...');
 const connection = new IORedis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
@@ -46,6 +58,20 @@ const connection = new IORedis(process.env.REDIS_URL!, {
   keepAlive: 30000, // Send keepalive every 30s
   family: 0, // Use IPv4 and IPv6
 });
+
+connection.on('connect', () => {
+  console.log('[REDIS] ✅ Connected to Redis successfully');
+});
+
+connection.on('error', (err) => {
+  console.error('[REDIS] ❌ Error:', err.message);
+});
+
+connection.on('close', () => {
+  console.log('[REDIS] Connection closed');
+});
+
+console.log('[WORKER] Creating BullMQ worker...');
 
 // Create worker
 export const smsWorker = new Worker(
