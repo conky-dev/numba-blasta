@@ -28,16 +28,10 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Create dedicated database pool for worker with proper SSL config
-// Parse DATABASE_URL to extract hostname for IPv4 enforcement
-const dbUrl = new URL(process.env.DATABASE_URL!);
 const dbPool = new Pool({
-  host: dbUrl.hostname,
-  port: parseInt(dbUrl.port) || 5432,
-  database: dbUrl.pathname.slice(1),
-  user: dbUrl.username,
-  password: dbUrl.password,
+  connectionString: process.env.DATABASE_URL!,
   ssl: {
-    rejectUnauthorized: false, // Accept Supabase's certificates
+    rejectUnauthorized: false,
   },
 });
 
