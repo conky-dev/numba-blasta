@@ -14,7 +14,7 @@ interface Template {
 }
 
 export default function QuickSMSPage() {
-  const [to, setTo] = useState('')
+  const [to, setTo] = useState<'all' | 'custom'>('all') // Changed to dropdown selection
   const [from, setFrom] = useState('smart')
   const [message, setMessage] = useState('')
   const [sendTime, setSendTime] = useState('now')
@@ -45,22 +45,11 @@ export default function QuickSMSPage() {
   const smsCount = Math.ceil(charCount / 160) || 1
 
   const handlePreview = () => {
-    if (!to || !message) {
+    if (!message) {
       setAlertModal({
         isOpen: true,
-        message: 'Please fill in both To and Message fields',
+        message: 'Please enter a message',
         title: 'Missing Information',
-        type: 'error'
-      })
-      return
-    }
-
-    // Validate phone number format
-    if (!to.startsWith('+')) {
-      setAlertModal({
-        isOpen: true,
-        message: 'Phone number must be in E.164 format (e.g., +1234567890)',
-        title: 'Invalid Phone Number',
         type: 'error'
       })
       return
@@ -74,45 +63,56 @@ export default function QuickSMSPage() {
     setSending(true)
 
     try {
-      const sendData: any = {
-        to,
-        message,
-      }
+      // If "All Contacts" is selected, use bulk send
+      if (to === 'all') {
+        const sendData: any = {
+          message,
+        }
 
-      // Add template if selected
-      if (selectedTemplate) {
-        sendData.templateId = selectedTemplate.id
-      }
+        // Add template if selected
+        if (selectedTemplate) {
+          sendData.templateId = selectedTemplate.id
+        }
 
-      // Add scheduling if "later"
-      if (sendTime === 'later' && scheduledDateTime) {
-        sendData.scheduledAt = new Date(scheduledDateTime).toISOString()
-      }
+        const response = await api.sms.bulkSend(sendData)
 
-      const response = await api.sms.send(sendData)
+        if (response.error) {
+          setAlertModal({
+            isOpen: true,
+            message: response.error,
+            title: 'Failed to Send Bulk SMS',
+            type: 'error'
+          })
+        } else {
+          const { contactCount, totalContacts, hasMore, jobsQueued, estimatedTotalCost } = response.data.bulk
+          
+          let successMessage = `Successfully queued ${jobsQueued} messages to ${contactCount} contacts! Estimated cost: $${estimatedTotalCost.toFixed(2)}`
+          
+          if (hasMore) {
+            successMessage += `\n\n⚠️ You have ${totalContacts} total contacts. Only the first ${contactCount} were queued. Click send again to reach the remaining ${totalContacts - contactCount} contacts.`
+          }
+          
+          setAlertModal({
+            isOpen: true,
+            message: successMessage,
+            title: hasMore ? 'Batch Queued (More Remaining)' : 'Bulk SMS Queued',
+            type: 'success'
+          })
 
-      if (response.error) {
-        setAlertModal({
-          isOpen: true,
-          message: response.error,
-          title: 'Failed to Send',
-          type: 'error'
-        })
+          // Reset form
+          setMessage('')
+          setSelectedTemplate(null)
+          setScheduledDateTime('')
+          setSendTime('now')
+        }
       } else {
-        const cost = response.data.message.estimatedCost || response.data.message.cost || 0;
+        // Custom list selected (coming soon)
         setAlertModal({
           isOpen: true,
-          message: `SMS queued successfully to ${to}!\n\nStatus: ${response.data.message.status}\nCost: $${cost.toFixed(2)}\nSegments: ${response.data.message.segments}`,
-          title: 'Success',
-          type: 'success'
+          message: 'Custom lists coming soon! For now, use "All Contacts".',
+          title: 'Feature Coming Soon',
+          type: 'info'
         })
-
-        // Reset form
-        setTo('')
-        setMessage('')
-        setSelectedTemplate(null)
-        setScheduledDateTime('')
-        setSendTime('now')
       }
     } catch (error: any) {
       setAlertModal({
@@ -169,16 +169,19 @@ export default function QuickSMSPage() {
           {/* To field */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              To
+              Send To
             </label>
-            <input
-              type="text"
-              placeholder="Enter phone number (e.g., +1234567890)"
+            <select
               value={to}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={(e) => setTo(e.target.value as 'all' | 'custom')}
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="mt-1 text-xs text-gray-500">Enter phone number in E.164 format with country code</p>
+            >
+              <option value="all">All Contacts</option>
+              <option value="custom" disabled>Custom List (Coming Soon)</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              {to === 'all' ? 'Will send to all non-opted-out contacts in your organization' : 'Select a custom list'}
+            </p>
           </div>
 
           {/* From field */}
@@ -306,9 +309,9 @@ export default function QuickSMSPage() {
             <button 
               onClick={handlePreview}
               disabled={sending}
-              className="px-8 py-3 bg-blue-500 text-white font-medium rounded-md hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="px-8 py-3 bg-blue-500 text-white font-medium rounded-md hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors w-full max-w-xs"
             >
-              {sending ? 'SENDING...' : 'PREVIEW AND CONFIRM'}
+              {sending ? 'SENDING...' : 'PREVIEW AND SEND'}
             </button>
           </div>
         </div>
@@ -349,7 +352,7 @@ export default function QuickSMSPage() {
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}
         onConfirm={handleSend}
-        to={to}
+        to={to === 'all' ? 'All Contacts' : 'Custom List'}
         from={from}
         message={message}
         sendTime={sendTime}

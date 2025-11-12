@@ -361,6 +361,17 @@ class ApiClient {
     }) => {
       return this.post('/api/sms/batch', data);
     },
+
+    /**
+     * Send bulk SMS to all contacts in the organization
+     */
+    bulkSend: async (data: {
+      message?: string;
+      templateId?: string;
+      variables?: Record<string, any>;
+    }) => {
+      return this.post('/api/sms/bulk-send', data);
+    },
   };
 
   // ============================================
