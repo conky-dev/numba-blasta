@@ -8,6 +8,14 @@ import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { SMSJobData } from '@/lib/sms-queue';
 
+// Startup logging
+console.log('🚀 Starting SMS Worker...');
+console.log('📦 Redis:', process.env.REDIS_URL?.split('@')[1] || 'connecting...');
+console.log('💾 Database:', process.env.DATABASE_URL?.includes('supabase') ? 'Supabase' : 'PostgreSQL');
+console.log('🌍 Environment:', process.env.RAILWAY_ENVIRONMENT || 'local');
+console.log('🔢 Node version:', process.version);
+console.log('');
+
 // Create dedicated database pool for worker with proper SSL config
 const dbPool = new Pool({
   connectionString: process.env.DATABASE_URL!,
