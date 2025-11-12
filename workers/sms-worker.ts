@@ -5,12 +5,38 @@
 
 import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
-import { query } from '@/lib/db';
+import { Pool } from 'pg';
 import { SMSJobData } from '@/lib/sms-queue';
 
-// Connect to Redis
+// Create dedicated database pool for worker with proper SSL config
+const dbPool = new Pool({
+  connectionString: process.env.DATABASE_URL!,
+  ssl: {
+    rejectUnauthorized: false, // Accept Supabase's certificates
+  },
+});
+
+dbPool.on('error', (err) => {
+  console.error('[DB] Pool error:', err);
+});
+
+// Helper function for queries
+async function query(sql: string, params?: any[]) {
+  const client = await dbPool.connect();
+  try {
+    return await client.query(sql, params);
+  } finally {
+    client.release();
+  }
+}
+
+// Connect to Redis with keepalive to prevent connection drops
 const connection = new IORedis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  lazyConnect: false,
+  keepAlive: 30000, // Send keepalive every 30s
+  family: 0, // Use IPv4 and IPv6
 });
 
 // Create worker
@@ -48,16 +74,16 @@ export const smsWorker = new Worker(
       try {
         // Deduct balance
         await query(
-          `SELECT deduct_credits(
-            p_org_id := $1,
-            p_amount := $2,
-            p_type := 'sms_send',
-            p_description := $3,
-            p_sms_count := 1,
-            p_cost_per_sms := $2,
-            p_created_by := $4
-          )`,
-          [orgId, cost, `SMS to ${to}`, userId]
+          `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            orgId,              // p_org_id
+            cost,               // p_amount
+            1,                  // p_sms_count
+            cost,               // p_cost_per_sms
+            null,               // p_message_id (will set after insert)
+            campaignId || null, // p_campaign_id
+            `SMS to ${to}`      // p_description
+          ]
         );
         
         // Save message record
@@ -125,6 +151,7 @@ process.on('SIGTERM', async () => {
   console.log('[WORKER] Shutting down...');
   await smsWorker.close();
   await connection.quit();
+  await dbPool.end();
   process.exit(0);
 });
 
@@ -132,6 +159,7 @@ process.on('SIGINT', async () => {
   console.log('[WORKER] Shutting down...');
   await smsWorker.close();
   await connection.quit();
+  await dbPool.end();
   process.exit(0);
 });
 

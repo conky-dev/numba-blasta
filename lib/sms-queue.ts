@@ -6,9 +6,13 @@
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 
-// Connect to Redis
+// Connect to Redis with keepalive to prevent connection drops
 const connection = new IORedis(process.env.REDIS_URL!, {
-  maxRetriesPerRequest: null, // Required for BullMQ
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  lazyConnect: false,
+  keepAlive: 30000, // Send keepalive every 30s
+  family: 0, // Use IPv4 and IPv6
 });
 
 // Create SMS queue

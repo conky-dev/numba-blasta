@@ -46,6 +46,7 @@ if (!process.env.DATABASE_URL) {
 console.log('🚀 Starting SMS Worker...');
 console.log('📦 Redis:', process.env.REDIS_URL?.split('@')[1] || 'connected');
 console.log('💾 Database:', process.env.DATABASE_URL?.includes('supabase') ? 'Supabase' : 'PostgreSQL');
+console.log('🔐 SSL Cert:', process.env.SUPABASE_CA_PEM ? 'Loaded' : '❌ MISSING');
 console.log('');
 
 // Import and start worker using tsx

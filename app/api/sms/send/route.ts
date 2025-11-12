@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     // Check if contact exists and if they've opted out
     const contactResult = await query(
-      'SELECT id, opted_out FROM contacts WHERE phone_number = $1 AND org_id = $2',
+      'SELECT id, opted_out_at FROM contacts WHERE phone = $1 AND org_id = $2 AND deleted_at IS NULL',
       [to, orgId]
     );
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       const contact = contactResult.rows[0];
       contactId = contact.id;
 
-      if (contact.opted_out) {
+      if (contact.opted_out_at) {
         return NextResponse.json(
           { error: 'Contact has opted out of SMS communications' },
           { status: 422 }
