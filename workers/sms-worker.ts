@@ -31,7 +31,7 @@ if (!process.env.DATABASE_URL) {
 const dbPool = new Pool({
   connectionString: process.env.DATABASE_URL!,
   ssl: {
-    rejectUnauthorized: false,
+    rejectUnauthorized: true, // Full certificate validation
   },
 });
 
