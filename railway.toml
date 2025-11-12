@@ -3,15 +3,7 @@
 
 [build]
 builder = "NIXPACKS"
-
-# Only watch/include worker files
-watchPatterns = [
-  "workers/**",
-  "lib/**",
-  "package.json",
-  "package-lock.json",
-  "tsconfig.json"
-]
+nixpacksConfigPath = ".nixpacks.toml"
 
 [deploy]
 startCommand = "npm run worker"

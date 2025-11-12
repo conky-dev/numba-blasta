@@ -1,5 +1,5 @@
 # Nixpacks configuration for Railway
-# Force it to skip Next.js build and only run worker
+# Force it to treat this as a simple Node.js worker, NOT a Next.js app
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
@@ -8,8 +8,8 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install"]
 
 [phases.build]
-# Skip Next.js build completely
-cmds = []
+# Explicitly skip build phase - this is just a worker
+cmds = ["echo 'Skipping build - worker only'"]
 
 [start]
 cmd = "npm run worker"
