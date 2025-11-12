@@ -8,6 +8,28 @@ import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { SMSJobData } from '@/lib/sms-queue';
 
+// START HEALTH SERVER FIRST - Railway needs this immediately
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+const healthServer = http.createServer((req: any, res: any) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy',
+      worker: 'running',
+      uptime: process.uptime()
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+});
+
+healthServer.listen(PORT, () => {
+  console.log(`[HEALTH] Health check endpoint running on port ${PORT}`);
+});
+
 // Startup logging
 console.log('🚀 Starting SMS Worker...');
 console.log('📦 Redis:', process.env.REDIS_URL?.split('@')[1] || 'connecting...');
@@ -179,30 +201,6 @@ smsWorker.on('error', (error) => {
 });
 
 console.log('[WORKER] SMS Worker started, waiting for jobs...');
-
-// Health check HTTP server to keep Railway happy
-// Railway needs an HTTP endpoint to know the service is alive
-const http = require('http');
-const PORT = process.env.PORT || 3000;
-
-const healthServer = http.createServer((req: any, res: any) => {
-  if (req.url === '/health' || req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ 
-      status: 'healthy',
-      worker: 'running',
-      uptime: process.uptime()
-    }));
-  } else {
-    res.writeHead(404);
-    res.end('Not Found');
-  }
-});
-
-healthServer.listen(PORT, () => {
-  console.log(`[HEALTH] Health check endpoint running on port ${PORT}`);
-  console.log(`[HEALTH] Visit http://localhost:${PORT}/health to check status`);
-});
 
 // Keep process alive
 process.on('uncaughtException', (error) => {
