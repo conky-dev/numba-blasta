@@ -28,19 +28,11 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Create dedicated database pool for worker with proper SSL config
-// Force IPv4 by parsing URL and using hostname instead of direct connection string
-const dbUrl = new URL(process.env.DATABASE_URL!);
 const dbPool = new Pool({
-  user: dbUrl.username,
-  password: dbUrl.password,
-  host: dbUrl.hostname, // This forces DNS resolution which prefers IPv4
-  port: parseInt(dbUrl.port) || 5432,
-  database: dbUrl.pathname.slice(1),
+  connectionString: process.env.DATABASE_URL!,
   ssl: {
     rejectUnauthorized: false,
   },
-  // Explicitly prefer IPv4
-  family: 4,
 });
 
 dbPool.on('error', (err) => {
