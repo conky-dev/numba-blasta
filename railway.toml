@@ -1,7 +1,17 @@
 # Railway Configuration for SMS Worker
+# This deploys ONLY the worker, not the Next.js app
 
 [build]
 builder = "NIXPACKS"
+
+# Only watch/include worker files
+watchPatterns = [
+  "workers/**",
+  "lib/**",
+  "package.json",
+  "package-lock.json",
+  "tsconfig.json"
+]
 
 [deploy]
 startCommand = "NODE_TLS_REJECT_UNAUTHORIZED=0  npm run workers/start-worker.js"
