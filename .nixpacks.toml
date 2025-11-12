@@ -1,5 +1,5 @@
 # Nixpacks configuration for Railway
-# Force it to treat this as a simple Node.js worker, NOT a Next.js app
+# Run worker directly, no npm wrapper
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
@@ -8,9 +8,8 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm install"]
 
 [phases.build]
-# Explicitly skip build phase - this is just a worker
-cmds = ["echo 'Skipping build - worker only'"]
+cmds = []
 
 [start]
-cmd = "tsx workers/sms-worker.ts"
+cmd = "./node_modules/.bin/tsx workers/sms-worker.ts"
 
