@@ -14,7 +14,7 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "NODE_TLS_REJECT_UNAUTHORIZED=0  npm run workers/start-worker.js"
+startCommand = "npm run worker"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
