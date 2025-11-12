@@ -74,7 +74,9 @@ connection.on('close', () => {
 console.log('[WORKER] Creating BullMQ worker...');
 
 // Create worker
-export const smsWorker = new Worker(
+let smsWorker: Worker<SMSJobData>;
+try {
+  smsWorker = new Worker(
   'sms',
   async (job: Job<SMSJobData>) => {
     console.log(`[WORKER] Processing job ${job.id} for ${job.data.to}`);
@@ -164,6 +166,13 @@ export const smsWorker = new Worker(
     concurrency: 5, // Process 5 messages at a time
   }
 );
+
+  console.log('[WORKER] ✅ Worker created successfully');
+} catch (error: any) {
+  console.error('[WORKER] ❌ FATAL: Failed to create worker:', error);
+  console.error('[WORKER] Error stack:', error.stack);
+  process.exit(1);
+}
 
 // Worker event listeners
 smsWorker.on('completed', (job) => {
