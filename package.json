@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "worker": "node workers/start-worker.js"
+    "worker": "tsx workers/sms-worker.ts"
   },
   "dependencies": {
     "@types/papaparse": "^5.5.0",

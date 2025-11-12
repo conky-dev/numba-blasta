@@ -12,5 +12,5 @@ cmds = ["npm install"]
 cmds = ["echo 'Skipping build - worker only'"]
 
 [start]
-cmd = "npx tsx workers/sms-worker.ts"
+cmd = "tsx workers/sms-worker.ts"
 
