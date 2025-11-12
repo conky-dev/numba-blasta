@@ -15,6 +15,7 @@ if (!process.env.RAILWAY_ENVIRONMENT) {
   const dotenv = require('dotenv');
   const fs = require('fs');
   const path = require('path');
+  let str = "cheese";
   
   // Try .env.local first, then .env
   const envLocalPath = path.join(__dirname, '..', '.env.local');
