@@ -1,25 +1,47 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
+import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink } from 'react-icons/md'
+import { api } from '@/lib/api-client'
+
+interface Template {
+  id: string
+  name: string
+  content: string  // Changed from 'body' to 'content'
+}
 
 export default function QuickSMSPage() {
   const [to, setTo] = useState('')
   const [from, setFrom] = useState('smart')
   const [message, setMessage] = useState('')
   const [sendTime, setSendTime] = useState('now')
+  const [scheduledDateTime, setScheduledDateTime] = useState('')
   const [shortenUrl, setShortenUrl] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [showPlaceholderModal, setShowPlaceholderModal] = useState(false)
+  const [showEmojiModal, setShowEmojiModal] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
+  const [sending, setSending] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
     type: 'info'
   })
 
+  // Prefetch templates on page load for faster modal opening
+  useEffect(() => {
+    // Trigger template fetch in background
+    api.templates.list({ limit: 100 }).catch(() => {
+      // Silently fail - modal will retry if needed
+    })
+  }, [])
+
   // Calculate SMS segments (160 chars per segment)
-  const charCount = message.length
+  const charCount = message?.length || 0
   const smsCount = Math.ceil(charCount / 160) || 1
 
   const handlePreview = () => {
@@ -32,33 +54,90 @@ export default function QuickSMSPage() {
       })
       return
     }
+
+    // Validate phone number format
+    if (!to.startsWith('+')) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Phone number must be in E.164 format (e.g., +1234567890)',
+        title: 'Invalid Phone Number',
+        type: 'error'
+      })
+      return
+    }
+
     setShowPreview(true)
   }
 
-  const handleSend = () => {
-    setAlertModal({
-      isOpen: true,
-      message: `SMS would be sent to: ${to}\nMessage: ${message}`,
-      title: 'SMS Sent',
-      type: 'success'
-    })
+  const handleSend = async () => {
     setShowPreview(false)
-    // Reset form
-    setTo('')
-    setMessage('')
+    setSending(true)
+
+    try {
+      const sendData: any = {
+        to,
+        message,
+      }
+
+      // Add template if selected
+      if (selectedTemplate) {
+        sendData.templateId = selectedTemplate.id
+      }
+
+      // Add scheduling if "later"
+      if (sendTime === 'later' && scheduledDateTime) {
+        sendData.scheduledAt = new Date(scheduledDateTime).toISOString()
+      }
+
+      const response = await api.sms.send(sendData)
+
+      if (response.error) {
+        setAlertModal({
+          isOpen: true,
+          message: response.error,
+          title: 'Failed to Send',
+          type: 'error'
+        })
+      } else {
+        setAlertModal({
+          isOpen: true,
+          message: `SMS sent successfully to ${to}!\n\nStatus: ${response.data.message.status}\nCost: $${response.data.message.cost.toFixed(2)}\nSegments: ${response.data.message.segments}`,
+          title: 'Success',
+          type: 'success'
+        })
+
+        // Reset form
+        setTo('')
+        setMessage('')
+        setSelectedTemplate(null)
+        setScheduledDateTime('')
+        setSendTime('now')
+      }
+    } catch (error: any) {
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'An unexpected error occurred',
+        title: 'Error',
+        type: 'error'
+      })
+    } finally {
+      setSending(false)
+    }
   }
 
-  const insertPlaceholder = () => {
-    const placeholders = ['[FirstName]', '[LastName]', '[Company]', '[CustomField]']
-    const selected = prompt(`Select placeholder:\n${placeholders.join('\n')}`) || '[FirstName]'
-    setMessage(message + selected)
+  const insertPlaceholder = (placeholder: string) => {
+    setMessage(message + placeholder)
+    setShowPlaceholderModal(false)
   }
 
-  const insertEmoji = () => {
-    const emojis = ['smile', 'thumbsup', 'heart', 'party', 'star', 'fire', '100', 'wave']
-    const actualEmojis = ['😊', '👍', '❤️', '🎉', '✨', '🔥', '💯', '👋']
-    const selected = prompt(`Popular emojis:\n${actualEmojis.join(' ')}`) || '😊'
-    setMessage(message + selected)
+  const insertEmoji = (emoji: string) => {
+    setMessage(message + emoji)
+    setShowEmojiModal(false)
+  }
+
+  const handleTemplateSelect = (template: Template) => {
+    setMessage(template.content)  // Changed from template.body to template.content
+    setSelectedTemplate(template)
   }
 
   return (
@@ -68,6 +147,24 @@ export default function QuickSMSPage() {
       <div className="flex flex-col lg:flex-row space-y-6 lg:space-y-0 lg:space-x-6">
         {/* Form */}
         <div className="flex-1 bg-white rounded-lg border border-gray-200 p-6 space-y-6">
+          {/* Template Selection (if selected) */}
+          {selectedTemplate && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-900">Template: {selectedTemplate.name}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedTemplate(null)
+                  setMessage('')
+                }}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           {/* To field */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -75,12 +172,12 @@ export default function QuickSMSPage() {
             </label>
             <input
               type="text"
-              placeholder="Search Contact/List or enter Mobile number"
+              placeholder="Enter phone number (e.g., +1234567890)"
               value={to}
               onChange={(e) => setTo(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-            <p className="mt-1 text-xs text-gray-500">Enter phone number with country code (e.g., +1234567890)</p>
+            <p className="mt-1 text-xs text-gray-500">Enter phone number in E.164 format with country code</p>
           </div>
 
           {/* From field */}
@@ -93,16 +190,10 @@ export default function QuickSMSPage() {
               onChange={(e) => setFrom(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="smart">Smart Senders</option>
-              <option value="+1234567890">+1 (234) 567-890</option>
-              <option value="+1098765432">+1 (098) 765-432</option>
+              <option value="smart">Smart Senders (Recommended)</option>
             </select>
             <p className="mt-2 text-sm text-gray-600">
-              The best sender has been auto-selected from{' '}
-              <a href="#" className="text-blue-500 hover:underline">
-                Smart Senders
-              </a>
-              . Reset the Smart Sender for each country. Or select an approved number or sender above.
+              Messages will be sent via your Twilio Messaging Service
             </p>
           </div>
 
@@ -114,26 +205,22 @@ export default function QuickSMSPage() {
             <div className="border border-gray-300 rounded-md">
               <div className="flex items-center space-x-4 px-4 py-2 border-b border-gray-200 bg-gray-50">
                 <button 
-                  onClick={insertPlaceholder}
+                  onClick={() => setShowPlaceholderModal(true)}
                   className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                  title="Insert placeholder like {{firstName}}"
                 >
                   <MdEdit />
                   <span>Placeholder</span>
                 </button>
                 <button 
-                  onClick={() => setAlertModal({
-                    isOpen: true,
-                    message: 'Template selection coming soon!',
-                    title: 'Templates',
-                    type: 'info'
-                  })}
+                  onClick={() => setShowTemplateModal(true)}
                   className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
                   <MdInsertDriveFile />
                   <span>Template</span>
                 </button>
                 <button 
-                  onClick={insertEmoji}
+                  onClick={() => setShowEmojiModal(true)}
                   className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
                   <MdEmojiEmotions />
@@ -161,12 +248,13 @@ export default function QuickSMSPage() {
                 checked={shortenUrl}
                 onChange={(e) => setShortenUrl(e.target.checked)}
                 className="sr-only peer"
+                disabled
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 opacity-50"></div>
             </label>
-            <span className="text-sm text-gray-700 flex items-center space-x-1">
+            <span className="text-sm text-gray-500 flex items-center space-x-1">
               <MdLink className="w-4 h-4" />
-              <span>Shorten my URL</span>
+              <span>Shorten my URL (Coming soon)</span>
             </span>
           </div>
 
@@ -195,14 +283,17 @@ export default function QuickSMSPage() {
                   checked={sendTime === 'later'}
                   onChange={(e) => setSendTime(e.target.value)}
                   className="text-blue-600 focus:ring-blue-500"
+                  disabled
                 />
-                <span className="text-sm text-gray-700">Later</span>
+                <span className="text-sm text-gray-500">Later (Coming soon)</span>
               </label>
             </div>
             {sendTime === 'later' && (
               <div className="mt-3">
                 <input
                   type="datetime-local"
+                  value={scheduledDateTime}
+                  onChange={(e) => setScheduledDateTime(e.target.value)}
                   className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -213,9 +304,10 @@ export default function QuickSMSPage() {
           <div className="flex justify-center pt-4">
             <button 
               onClick={handlePreview}
-              className="px-8 py-3 bg-blue-500 text-white font-medium rounded-md hover:bg-blue-600 transition-colors"
+              disabled={sending}
+              className="px-8 py-3 bg-blue-500 text-white font-medium rounded-md hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
-              PREVIEW AND CONFIRM
+              {sending ? 'SENDING...' : 'PREVIEW AND CONFIRM'}
             </button>
           </div>
         </div>
@@ -251,6 +343,7 @@ export default function QuickSMSPage() {
         </div>
       </div>
 
+      {/* Modals */}
       <PreviewModal
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}
@@ -262,6 +355,81 @@ export default function QuickSMSPage() {
         charCount={charCount}
         smsCount={smsCount}
       />
+
+      <SelectTemplateModal
+        isOpen={showTemplateModal}
+        onClose={() => setShowTemplateModal(false)}
+        onSelect={handleTemplateSelect}
+      />
+
+      {/* Placeholder Modal */}
+      {showPlaceholderModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Insert Placeholder</h2>
+            <p className="text-sm text-gray-600 mb-4">Select a placeholder to insert into your message:</p>
+            <div className="space-y-2">
+              {['{{firstName}}', '{{lastName}}', '{{phone}}', '{{email}}'].map((placeholder) => (
+                <button
+                  key={placeholder}
+                  onClick={() => insertPlaceholder(placeholder)}
+                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                >
+                  <code className="text-sm font-mono text-blue-600">{placeholder}</code>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowPlaceholderModal(false)}
+              className="w-full mt-4 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Emoji Modal */}
+      {showEmojiModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Insert Emoji</h2>
+            <p className="text-sm text-gray-600 mb-4">Select an emoji to insert into your message:</p>
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { emoji: '😊', name: 'Smile' },
+                { emoji: '👍', name: 'Thumbs Up' },
+                { emoji: '❤️', name: 'Heart' },
+                { emoji: '🎉', name: 'Party' },
+                { emoji: '✨', name: 'Star' },
+                { emoji: '🔥', name: 'Fire' },
+                { emoji: '💯', name: '100' },
+                { emoji: '👋', name: 'Wave' },
+                { emoji: '💪', name: 'Strong' },
+                { emoji: '🙏', name: 'Pray' },
+                { emoji: '😂', name: 'Laugh' },
+                { emoji: '🎯', name: 'Target' },
+              ].map((item) => (
+                <button
+                  key={item.emoji}
+                  onClick={() => insertEmoji(item.emoji)}
+                  className="flex flex-col items-center justify-center p-3 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                  title={item.name}
+                >
+                  <span className="text-2xl">{item.emoji}</span>
+                  <span className="text-xs text-gray-600 mt-1">{item.name}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowEmojiModal(false)}
+              className="w-full mt-4 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <AlertModal
         isOpen={alertModal.isOpen}

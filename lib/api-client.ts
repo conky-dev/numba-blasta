@@ -333,6 +333,37 @@ class ApiClient {
   };
 
   // ============================================
+  // SMS API
+  // ============================================
+
+  sms = {
+    /**
+     * Send a single SMS
+     */
+    send: async (data: {
+      to: string;
+      message?: string;
+      templateId?: string;
+      variables?: Record<string, any>;
+      scheduledAt?: string;
+    }) => {
+      return this.post('/api/sms/send', data);
+    },
+
+    /**
+     * Send SMS to multiple recipients (batch)
+     */
+    sendBatch: async (data: {
+      to: string[]; // Array of phone numbers
+      message?: string;
+      templateId?: string;
+      variables?: Record<string, any>;
+    }) => {
+      return this.post('/api/sms/batch', data);
+    },
+  };
+
+  // ============================================
   // TEMPLATES API
   // ============================================
 
