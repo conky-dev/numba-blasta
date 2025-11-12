@@ -109,6 +109,7 @@ try {
       
       try {
         // Deduct balance
+        console.log(`[WORKER] Deducting ${cost} credits for org ${orgId}`);
         await query(
           `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7)`,
           [
@@ -121,15 +122,24 @@ try {
             `SMS to ${to}`      // p_description
           ]
         );
+        console.log(`[WORKER] Credits deducted successfully`);
         
         // Save message record
-        await query(
+        console.log(`[WORKER] Saving message to database:`, {
+          orgId,
+          to,
+          messageLength: message.length,
+          messagePreview: message.substring(0, 20)
+        });
+        
+        const insertResult = await query(
           `INSERT INTO sms_messages (
             org_id, contact_id, to_number, body,
             direction, status, segments, price_cents,
             campaign_id, template_id, created_by,
             sent_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+          RETURNING id`,
           [
             orgId,
             contactId || null,
@@ -145,13 +155,17 @@ try {
           ]
         );
         
+        console.log(`[WORKER] Message saved with ID: ${insertResult.rows[0]?.id}`);
+        
         await query('COMMIT');
         
         console.log(`[WORKER] ✅ Job ${job.id} completed successfully`);
         
         return { success: true, to, status: 'sent' };
         
-      } catch (error) {
+      } catch (error: any) {
+        console.error(`[WORKER] ❌ Transaction error:`, error.message);
+        console.error(`[WORKER] ❌ Error stack:`, error.stack);
         await query('ROLLBACK');
         throw error;
       }
