@@ -1,0 +1,45 @@
+# Railway Ignore File
+# Files/folders that Railway doesn't need to deploy
+
+# Next.js
+.next/
+out/
+
+# Dependencies (Railway will npm install)
+node_modules/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!RAILWAY_DEPLOYMENT.md
+!QUEUE_SETUP.md
+
+# Screenshots
+product_screenshots/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+

@@ -1,0 +1,14 @@
+# Railway Configuration for SMS Worker
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm run worker"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[healthcheck]
+checkInterval = 300
+timeout = 30
+
