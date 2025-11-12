@@ -28,13 +28,17 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Create dedicated database pool for worker with proper SSL config
+// Parse DATABASE_URL to extract hostname for IPv4 enforcement
+const dbUrl = new URL(process.env.DATABASE_URL!);
 const dbPool = new Pool({
-  connectionString: process.env.DATABASE_URL!,
+  host: dbUrl.hostname,
+  port: parseInt(dbUrl.port) || 5432,
+  database: dbUrl.pathname.slice(1),
+  user: dbUrl.username,
+  password: dbUrl.password,
   ssl: {
     rejectUnauthorized: false, // Accept Supabase's certificates
   },
-  // Force IPv4 to avoid Railway IPv6 issues
-  host: process.env.DATABASE_URL!.match(/host=([^\s]+)/)?.[1] || undefined,
 });
 
 dbPool.on('error', (err) => {
