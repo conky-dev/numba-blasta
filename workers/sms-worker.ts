@@ -33,6 +33,8 @@ const dbPool = new Pool({
   ssl: {
     rejectUnauthorized: false, // Accept Supabase's certificates
   },
+  // Force IPv4 to avoid Railway IPv6 issues
+  host: process.env.DATABASE_URL!.match(/host=([^\s]+)/)?.[1] || undefined,
 });
 
 dbPool.on('error', (err) => {

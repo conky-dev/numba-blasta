@@ -5,7 +5,7 @@ builder = "NIXPACKS"
 nixpacksConfigPath = ".nixpacks.toml"
 
 [deploy]
-startCommand = "./node_modules/.bin/tsx workers/sms-worker.ts"
+startCommand = "NODE_OPTIONS='--dns-result-order=ipv4first' ./node_modules/.bin/tsx workers/sms-worker.ts"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
