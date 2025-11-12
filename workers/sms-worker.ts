@@ -154,9 +154,43 @@ smsWorker.on('error', (error) => {
 
 console.log('[WORKER] SMS Worker started, waiting for jobs...');
 
+// Health check HTTP server to keep Railway happy
+// Railway needs an HTTP endpoint to know the service is alive
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+const healthServer = http.createServer((req: any, res: any) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy',
+      worker: 'running',
+      uptime: process.uptime()
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+});
+
+healthServer.listen(PORT, () => {
+  console.log(`[HEALTH] Health check endpoint running on port ${PORT}`);
+  console.log(`[HEALTH] Visit http://localhost:${PORT}/health to check status`);
+});
+
+// Keep process alive
+process.on('uncaughtException', (error) => {
+  console.error('[ERROR] Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[ERROR] Unhandled rejection at:', promise, 'reason:', reason);
+});
+
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('[WORKER] Shutting down...');
+  healthServer.close();
   await smsWorker.close();
   await connection.quit();
   await dbPool.end();
@@ -165,6 +199,7 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   console.log('[WORKER] Shutting down...');
+  healthServer.close();
   await smsWorker.close();
   await connection.quit();
   await dbPool.end();
