@@ -8,28 +8,6 @@ import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { SMSJobData } from '@/lib/sms-queue';
 
-// START HEALTH SERVER FIRST - Railway needs this immediately
-const http = require('http');
-const PORT = process.env.PORT || 3000;
-
-const healthServer = http.createServer((req: any, res: any) => {
-  if (req.url === '/health' || req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ 
-      status: 'healthy',
-      worker: 'running',
-      uptime: process.uptime()
-    }));
-  } else {
-    res.writeHead(404);
-    res.end('Not Found');
-  }
-});
-
-healthServer.listen(PORT, () => {
-  console.log(`[HEALTH] Health check endpoint running on port ${PORT}`);
-});
-
 // Startup logging
 console.log('🚀 Starting SMS Worker...');
 console.log('📦 Redis:', process.env.REDIS_URL?.split('@')[1] || 'connecting...');
@@ -202,6 +180,11 @@ smsWorker.on('error', (error) => {
 
 console.log('[WORKER] SMS Worker started, waiting for jobs...');
 
+// Keep process alive with setInterval
+setInterval(() => {
+  // This keeps the Node.js event loop running
+}, 60000); // Every 60 seconds
+
 // Keep process alive
 process.on('uncaughtException', (error) => {
   console.error('[ERROR] Uncaught exception:', error);
@@ -214,7 +197,6 @@ process.on('unhandledRejection', (reason, promise) => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('[WORKER] Shutting down...');
-  healthServer.close();
   await smsWorker.close();
   await connection.quit();
   await dbPool.end();
@@ -223,7 +205,6 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   console.log('[WORKER] Shutting down...');
-  healthServer.close();
   await smsWorker.close();
   await connection.quit();
   await dbPool.end();
