@@ -99,9 +99,10 @@ export default function QuickSMSPage() {
           type: 'error'
         })
       } else {
+        const cost = response.data.message.estimatedCost || response.data.message.cost || 0;
         setAlertModal({
           isOpen: true,
-          message: `SMS sent successfully to ${to}!\n\nStatus: ${response.data.message.status}\nCost: $${response.data.message.cost.toFixed(2)}\nSegments: ${response.data.message.segments}`,
+          message: `SMS queued successfully to ${to}!\n\nStatus: ${response.data.message.status}\nCost: $${cost.toFixed(2)}\nSegments: ${response.data.message.segments}`,
           title: 'Success',
           type: 'success'
         })

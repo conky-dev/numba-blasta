@@ -6,12 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker": "node workers/start-worker.js"
   },
   "dependencies": {
     "@types/papaparse": "^5.5.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.63.0",
+    "dotenv": "^17.2.3",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "mustache": "^4.2.0",
@@ -36,6 +38,7 @@
     "eslint-config-next": "^14.2.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.4.0"
   }
 }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth-utils';
 import { query } from '@/lib/db';
-import { sendSMS, validatePhoneNumber, calculateSMSSegments, calculateSMSCost } from '@/lib/twilio-utils';
+import { validatePhoneNumber, calculateSMSSegments, calculateSMSCost } from '@/lib/twilio-utils';
 import { renderTemplate } from '@/lib/template-utils';
+import { queueSMS } from '@/lib/sms-queue';
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     // Check if contact exists and if they've opted out
     const contactResult = await query(
-      'SELECT id, opted_out FROM contacts WHERE phone_number = $1 AND org_id = $2',
+      'SELECT id, opted_out_at FROM contacts WHERE phone = $1 AND org_id = $2 AND deleted_at IS NULL',
       [to, orgId]
     );
 
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
       const contact = contactResult.rows[0];
       contactId = contact.id;
 
-      if (contact.opted_out) {
+      if (contact.opted_out_at) {
         return NextResponse.json(
           { error: 'Contact has opted out of SMS communications' },
           { status: 422 }
@@ -127,130 +128,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Send SMS via Twilio
-    console.log('[SMS] Sending message:', {
+    // Queue the SMS job (don't send directly)
+    console.log('[SMS] Queuing message:', {
       to,
       segments,
       costCents,
       hasTemplate: !!templateId
     });
 
-    let twilioResult;
-    try {
-      twilioResult = await sendSMS({
+    const job = await queueSMS({
+      to,
+      message: messageBody,
+      orgId,
+      userId,
+      contactId,
+      templateId: resolvedTemplateId,
+      variables: variables || {},
+    });
+
+    console.log('[SMS] Message queued successfully:', {
+      jobId: job.id,
+      to,
+      segments,
+      costCents
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: {
+        id: job.id,
         to,
         body: messageBody,
-        statusCallback: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhooks/twilio-status`
-      }, orgId);
-    } catch (twilioError: any) {
-      console.error('[SMS] Twilio error:', twilioError);
-      
-      // Insert failed message record
-      await query(
-        `INSERT INTO sms_messages (
-          org_id, contact_id, to_number, body, direction, status,
-          segments, price_cents, error_code, error_message,
-          template_id, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [
-          orgId,
-          contactId,
-          to,
-          messageBody,
-          'outbound',
-          'failed',
-          segments,
-          costCents,
-          twilioError.errorCode?.toString() || null,
-          twilioError.errorMessage || 'Failed to send',
-          resolvedTemplateId,
-          userId
-        ]
-      );
-
-      return NextResponse.json(
-        { 
-          error: 'Failed to send SMS',
-          details: twilioError.errorMessage || 'Unknown error'
-        },
-        { status: 500 }
-      );
-    }
-
-    // Deduct balance and insert message record in a transaction
-    const client = await query('BEGIN');
-    
-    try {
-      // Deduct balance using the SQL function
-      await query(
-        `SELECT deduct_credits(
-          p_org_id := $1,
-          p_amount := $2,
-          p_type := 'sms_send',
-          p_description := 'SMS sent to ' || $3,
-          p_sms_count := $4,
-          p_cost_per_sms := $5,
-          p_created_by := $6
-        )`,
-        [orgId, requiredBalance, to, segments, costCents / 100, userId]
-      );
-
-      // Insert message record
-      const messageResult = await query(
-        `INSERT INTO sms_messages (
-          org_id, contact_id, to_number, from_number, body, direction, status,
-          segments, price_cents, provider_sid, provider_status,
-          template_id, metadata, sent_at, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
-        RETURNING id, created_at`,
-        [
-          orgId,
-          contactId,
-          twilioResult.to,
-          twilioResult.from,
-          messageBody,
-          'outbound',
-          twilioResult.status,
-          segments,
-          costCents,
-          twilioResult.sid,
-          twilioResult.status,
-          resolvedTemplateId,
-          JSON.stringify({ variables: variables || {} }),
-          userId
-        ]
-      );
-
-      await query('COMMIT');
-
-      const insertedMessage = messageResult.rows[0];
-
-      console.log('[SMS] Message sent successfully:', {
-        messageId: insertedMessage.id,
-        twilioSid: twilioResult.sid,
-        status: twilioResult.status,
+        status: 'queued',
         segments,
-        costCents
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: {
-          id: insertedMessage.id,
-          to: twilioResult.to,
-          from: twilioResult.from,
-          body: messageBody,
-          status: twilioResult.status,
-          segments,
-          cost: requiredBalance,
-          providerSid: twilioResult.sid,
-          createdAt: insertedMessage.created_at
-        }
-      });
-    } catch (error) {
-      await query('ROLLBACK');
-      throw error;
-    }
+        estimatedCost: costCents / 100,
+        queuedAt: new Date().toISOString()
+      }
+    });
   } catch (error: any) {
     console.error('[SMS] Error:', error);
 
