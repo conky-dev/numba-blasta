@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FaEnvelope, FaLock, FaUser } from 'react-icons/fa';
 import AlertModal from '@/components/modals/AlertModal';
 import { api } from '@/lib/api-client';
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams?.get('redirect');
+  
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -75,6 +78,11 @@ export default function SignupPage() {
         return;
       }
 
+      // Store the auth token for auto-login
+      if (data?.token) {
+        localStorage.setItem('auth_token', data.token);
+      }
+
       // Success!
       setAlertModal({
         isOpen: true,
@@ -83,9 +91,13 @@ export default function SignupPage() {
         message: data?.message || 'Your account has been created successfully',
       });
 
-      // Redirect to login after 2 seconds
+      // Redirect to the original destination or login after 2 seconds
       setTimeout(() => {
-        router.push('/');
+        if (redirect) {
+          router.push(redirect);
+        } else {
+          router.push('/');
+        }
       }, 2000);
     } catch (error) {
       console.error('Signup error:', error);

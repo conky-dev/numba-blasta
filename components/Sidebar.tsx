@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { MdDashboard, MdContacts, MdMessage, MdLogout, MdClose, MdPerson, MdBusiness } from 'react-icons/md'
+import { MdDashboard, MdContacts, MdMessage, MdLogout, MdClose, MdPerson, MdBusiness, MdPersonAdd } from 'react-icons/md'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import InviteMemberModal from '@/components/modals/InviteMemberModal'
 import { api } from '@/lib/api-client'
 
 const menuItems = [
@@ -41,6 +42,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter()
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({ SMS: true })
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [showInviteModal, setShowInviteModal] = useState(false)
   const [userInfo, setUserInfo] = useState<{
     name: string
     orgName: string
@@ -170,10 +172,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <MdBusiness className="w-3 h-3 mr-1 flex-shrink-0" />
                   <span className="truncate">{userInfo.orgName}</span>
                 </div>
-                <div className="mt-1">
+                <div className="mt-1 flex items-center justify-between">
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 capitalize">
                     {userInfo.role}
                   </span>
+                  {(userInfo.role === 'owner' || userInfo.role === 'admin') && (
+                    <button
+                      onClick={() => setShowInviteModal(true)}
+                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      title="Invite team member"
+                    >
+                      <MdPersonAdd className="w-4 h-4 mr-1" />
+                      Invite
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -256,6 +268,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         type="warning"
         confirmText="Logout"
         cancelText="Cancel"
+      />
+
+      <InviteMemberModal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
       />
     </>
   )

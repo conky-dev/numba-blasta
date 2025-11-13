@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import jwt from 'jsonwebtoken';
 import { hashPassword } from '@/lib/auth-utils';
 import { query } from '@/lib/db';
 
@@ -82,11 +83,33 @@ export async function POST(request: NextRequest) {
 
     console.log('[SUCCESS] User account created successfully (no org - will be created via onboarding)');
 
-    return NextResponse.json({
+    // Generate JWT token for auto-login
+    const token = jwt.sign(
+      {
+        userId,
+        email,
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // Set the token in a cookie
+    const response = NextResponse.json({
       success: true,
-      message: 'Account created successfully. You can now log in.',
+      message: 'Account created successfully. You are now logged in.',
       userId,
+      token,
     });
+
+    response.cookies.set('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
+
+    return response;
   } catch (error: any) {
     console.error('Signup error:', error);
     return NextResponse.json(
