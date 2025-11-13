@@ -60,6 +60,17 @@ export default function MessengerPage() {
     }
   }, [mounted])
 
+  // Auto-refresh messages in selected conversation every 5 seconds
+  useEffect(() => {
+    if (!mounted || !selectedConversation) return
+
+    const interval = setInterval(() => {
+      loadMessages(selectedConversation.contactId)
+    }, 5000) // Refresh every 5 seconds
+
+    return () => clearInterval(interval)
+  }, [mounted, selectedConversation?.contactId])
+
   const loadConversations = async () => {
     setLoading(true)
     try {
@@ -138,10 +149,8 @@ export default function MessengerPage() {
   const handleSelectConversation = async (conv: Conversation) => {
     setSelectedConversation(conv)
     
-    // Load messages if not already loaded
-    if (!conv.messagesLoaded) {
-      await loadMessages(conv.contactId)
-    }
+    // Always reload messages to get fresh data (including new inbound messages)
+    await loadMessages(conv.contactId)
   }
 
   const getInitials = (name: string): string => {
