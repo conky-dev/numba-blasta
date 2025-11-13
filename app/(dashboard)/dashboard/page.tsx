@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FaSync } from 'react-icons/fa'
-import { MdMessage, MdPhone, MdTextsms, MdCampaign, MdContacts } from 'react-icons/md'
+import { MdMessage, MdTextsms, MdCampaign, MdContacts } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
 import { api } from '@/lib/api-client'
 
@@ -56,10 +55,6 @@ export default function DashboardPage() {
     }
   }
 
-  const handleRefresh = () => {
-    loadStats()
-  }
-
   // Format dates for chart
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -76,26 +71,16 @@ export default function DashboardPage() {
     <div className="p-4 md:p-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl md:text-2xl font-semibold text-gray-800">Statistics</h1>
-        <div className="flex items-center space-x-4">
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="7days">Last 7 days</option>
-            <option value="30days">Last 30 days</option>
-            <option value="90days">Last 90 days</option>
-            <option value="1year">Last year</option>
-          </select>
-          <button
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm flex items-center space-x-2"
-            title="Refresh data"
-          >
-            <FaSync className="w-4 h-4" />
-            <span>Refresh</span>
-          </button>
-        </div>
+        <select
+          value={timeRange}
+          onChange={(e) => setTimeRange(e.target.value as any)}
+          className="px-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="7days">Last 7 days</option>
+          <option value="30days">Last 30 days</option>
+          <option value="90days">Last 90 days</option>
+          <option value="1year">Last year</option>
+        </select>
       </div>
 
       <div className="flex flex-col lg:flex-row items-start space-y-4 lg:space-y-0 lg:space-x-6">
@@ -126,32 +111,19 @@ export default function DashboardPage() {
 
         {/* Right side - Chart */}
         <div className="flex-1 bg-white border border-gray-200 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                <span className="text-sm text-gray-600">Outbound</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-green-500 rounded"></div>
-                <span className="text-sm text-gray-600">Inbound</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-red-500 rounded"></div>
-                <span className="text-sm text-gray-600">Failed</span>
-              </div>
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-blue-500 rounded"></div>
+              <span className="text-sm text-gray-600">Outbound</span>
             </div>
-            <button 
-              onClick={() => setAlertModal({
-                isOpen: true,
-                message: 'Detailed analytics coming soon!',
-                title: 'Analytics',
-                type: 'info'
-              })}
-              className="text-sm text-blue-600 hover:text-blue-700"
-            >
-              View Details →
-            </button>
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-green-500 rounded"></div>
+              <span className="text-sm text-gray-600">Inbound</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-red-500 rounded"></div>
+              <span className="text-sm text-gray-600">Failed</span>
+            </div>
           </div>
 
           {/* Simple chart visualization */}

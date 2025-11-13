@@ -14,8 +14,8 @@ export interface JWTPayload {
 export interface AuthContext {
   userId: string;
   email: string;
-  orgId: string;
-  role?: string;
+  orgId: string | null; // Nullable for users without org (during onboarding)
+  role?: string | null; // Nullable for users without org
 }
 
 /**
@@ -63,9 +63,13 @@ export function getTokenFromHeader(authHeader: string | null): string | null {
 
 /**
  * Authenticate a request and get user context with org_id
+ * @param requiresOrg - If true, throws error if user has no org (default: true)
  * @throws Error if authentication fails
  */
-export async function authenticateRequest(request: NextRequest): Promise<AuthContext> {
+export async function authenticateRequest(
+  request: NextRequest,
+  requiresOrg: boolean = true
+): Promise<AuthContext> {
   const authHeader = request.headers.get('authorization');
   const token = getTokenFromHeader(authHeader);
 
@@ -78,7 +82,7 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthCon
     throw new Error('Invalid or expired token');
   }
 
-  // Get user's org_id from database
+  // Get user's org_id from database (may be null for new users)
   const result = await query(
     `SELECT om.org_id, om.role 
      FROM organization_members om 
@@ -87,15 +91,36 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthCon
     [payload.userId]
   );
 
-  if (result.rows.length === 0) {
+  // Check if org is required but user has none
+  if (requiresOrg && result.rows.length === 0) {
     throw new Error('User not associated with any organization');
   }
 
   return {
     userId: payload.userId,
     email: payload.email,
-    orgId: result.rows[0].org_id,
-    role: result.rows[0].role,
+    orgId: result.rows[0]?.org_id || null,
+    role: result.rows[0]?.role || null,
   };
+}
+
+/**
+ * Require user to be org owner
+ * @throws Error if user is not an owner
+ */
+export function requireOwner(authContext: AuthContext): void {
+  if (authContext.role !== 'owner') {
+    throw new Error('Owner access required');
+  }
+}
+
+/**
+ * Require user to be org admin or owner
+ * @throws Error if user is not admin/owner
+ */
+export function requireAdmin(authContext: AuthContext): void {
+  if (!authContext.role || !['owner', 'admin'].includes(authContext.role)) {
+    throw new Error('Admin access required');
+  }
 }
 
