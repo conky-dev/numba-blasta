@@ -1,76 +1,74 @@
 'use client'
 
-import { useState } from 'react'
-import { MdClose, MdUnfoldMore, MdArrowUpward, MdArrowDownward } from 'react-icons/md'
+import { useState, useEffect } from 'react'
+import { MdClose, MdUnfoldMore, MdArrowUpward, MdArrowDownward, MdChevronLeft, MdChevronRight } from 'react-icons/md'
+import { api } from '@/lib/api-client'
 
 interface SMSMessage {
-  id: number
-  username: string
-  date: string
-  from: string
+  id: string
   to: string
-  status: 'Sent' | 'Delivered' | 'Failed' | 'Pending'
+  from: string
   body: string
+  status: string
+  createdAt: string
+  sentAt?: string
+  deliveredAt?: string
+  errorMessage?: string
+  contactName?: string
+  createdByName?: string
+  segments: number
+  priceCents: number
 }
 
-const initialMessages: SMSMessage[] = [
-  {
-    id: 1,
-    username: 'leads@nurtureboost.com',
-    date: 'Nov 07, 2025 06:18 AM',
-    from: '+18339620992',
-    to: '+19375092293',
-    status: 'Sent',
-    body: "Hey Melissa, this is Dom. I was just reaching out about your 13461 STATE ROUTE 28 W property, I just need 30 seconds of your time to verify some info in order to have the team get you a cash offer. Is now a good time?"
-  },
-  {
-    id: 2,
-    username: 'leads@nurtureboost.com',
-    date: 'Nov 07, 2025 06:14 AM',
-    from: '+18339620992',
-    to: '+14783573560',
-    status: 'Delivered',
-    body: "Hey Nathaniel, this is Dom. I was just reaching out about your 3412 LEE ST property, I just need 30 seconds of your time to verify some info in order to have the team get you a cash offer. Is now a good time?"
-  },
-  {
-    id: 3,
-    username: 'leads@nurtureboost.com',
-    date: 'Nov 07, 2025 06:10 AM',
-    from: '+18339620992',
-    to: '+19045158747',
-    status: 'Sent',
-    body: "Hey Stacey, this is Dom. I was just reaching out about your 3171 JESSIE RD property, I just need 30 seconds of your time to verify some info in order to have the team get you a cash offer. Is now a good time?"
-  },
-  {
-    id: 4,
-    username: 'leads@nurtureboost.com',
-    date: 'Nov 07, 2025 06:05 AM',
-    from: '+18339620992',
-    to: '+12069280755',
-    status: 'Failed',
-    body: "Hey Jennifer, this is Dom. I was just reaching out about your 212 GRAY ST property, I just need 30 seconds of your time to verify some info in order to have the team get you a cash offer. Is now a good time?"
-  },
-  {
-    id: 5,
-    username: 'leads@nurtureboost.com',
-    date: 'Nov 07, 2025 06:05 AM',
-    from: '+18339620992',
-    to: '+17179685453',
-    status: 'Sent',
-    body: "Hey Maria, this is Dom. I was just reaching out about your 2117 GLENN ST property, I just need 30 seconds of your time to verify some info in order to have the team get you a cash offer. Is now a good time?"
-  },
-]
-
 export default function HistoryPage() {
-  const [messages, setMessages] = useState<SMSMessage[]>(initialMessages)
+  const [messages, setMessages] = useState<SMSMessage[]>([])
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalMessages, setTotalMessages] = useState(0)
+  const itemsPerPage = 20
+
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-  const [searchField, setSearchField] = useState('to')
-  const [sortField, setSortField] = useState<keyof SMSMessage>('date')
+  const [searchField, setSearchField] = useState<'to_number' | 'from_number' | 'body'>('to_number')
+  const [sortField, setSortField] = useState<'created_at' | 'to_number' | 'from_number' | 'status' | 'body'>('created_at')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
-  const handleSort = (field: keyof SMSMessage) => {
+  useEffect(() => {
+    fetchMessages()
+  }, [currentPage, sortField, sortDirection])
+
+  const fetchMessages = async () => {
+    setLoading(true)
+    try {
+      const response = await api.sms.getMessages({
+        limit: itemsPerPage,
+        offset: (currentPage - 1) * itemsPerPage,
+        search: searchTerm || undefined,
+        searchField: searchTerm ? searchField : undefined,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        sortField,
+        sortDirection,
+      })
+
+      if (response.data) {
+        setMessages(response.data.messages)
+        setTotalMessages(response.data.pagination.total)
+      }
+    } catch (error) {
+      console.error('Failed to fetch messages:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSearch = () => {
+    setCurrentPage(1)
+    fetchMessages()
+  }
+
+  const handleSort = (field: typeof sortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
     } else {
@@ -79,45 +77,7 @@ export default function HistoryPage() {
     }
   }
 
-  const filteredMessages = messages.filter(message => {
-    // Date filter
-    if (fromDate && new Date(message.date) < new Date(fromDate)) return false
-    if (toDate && new Date(message.date) > new Date(toDate)) return false
-    
-    // Search filter
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase()
-      if (searchField === 'to' && !message.to.includes(searchTerm)) return false
-      if (searchField === 'from' && !message.from.includes(searchTerm)) return false
-      if (searchField === 'body' && !message.body.toLowerCase().includes(searchLower)) return false
-    }
-    
-    return true
-  })
-
-  const sortedMessages = [...filteredMessages].sort((a, b) => {
-    let aVal = a[sortField]
-    let bVal = b[sortField]
-    
-    if (sortField === 'date') {
-      aVal = new Date(aVal as string).getTime()
-      bVal = new Date(bVal as string).getTime()
-    }
-    
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
-      return sortDirection === 'asc' 
-        ? aVal.localeCompare(bVal)
-        : bVal.localeCompare(aVal)
-    }
-    
-    if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal
-    }
-    
-    return 0
-  })
-
-  const getSortIcon = (field: keyof SMSMessage) => {
+  const getSortIcon = (field: typeof sortField) => {
     if (sortField !== field) return <MdUnfoldMore className="inline w-4 h-4 ml-1" />
     return sortDirection === 'asc' 
       ? <MdArrowUpward className="inline w-4 h-4 ml-1" />
@@ -125,21 +85,20 @@ export default function HistoryPage() {
   }
 
   const handleExport = () => {
-    // Create CSV content
-    const headers = ['Username', 'Date', 'From', 'To', 'Status', 'Body']
+    const headers = ['Date', 'From', 'To', 'Status', 'Body', 'Contact', 'Created By']
     const csvContent = [
       headers.join(','),
-      ...sortedMessages.map(msg => [
-        msg.username,
-        msg.date,
+      ...messages.map(msg => [
+        new Date(msg.createdAt).toLocaleString(),
         msg.from,
         msg.to,
         msg.status,
-        `"${msg.body.replace(/"/g, '""')}"`
+        `"${msg.body.replace(/"/g, '""')}"`,
+        msg.contactName || '',
+        msg.createdByName || ''
       ].join(','))
     ].join('\n')
 
-    // Create blob and download
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -155,21 +114,36 @@ export default function HistoryPage() {
     setFromDate('')
     setToDate('')
     setSearchTerm('')
+    setCurrentPage(1)
+    setTimeout(() => fetchMessages(), 0)
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Sent':
-      case 'Delivered':
+    switch (status.toLowerCase()) {
+      case 'sent':
+      case 'delivered':
         return 'bg-green-500'
-      case 'Failed':
+      case 'failed':
         return 'bg-red-500'
-      case 'Pending':
+      case 'pending':
+      case 'queued':
         return 'bg-yellow-500'
       default:
         return 'bg-gray-500'
     }
   }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const totalPages = Math.ceil(totalMessages / itemsPerPage)
 
   return (
     <div className="p-4 md:p-8">
@@ -208,23 +182,31 @@ export default function HistoryPage() {
             </button>
             <select 
               value={searchField}
-              onChange={(e) => setSearchField(e.target.value)}
+              onChange={(e) => setSearchField(e.target.value as any)}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="to">To</option>
-              <option value="from">From</option>
+              <option value="to_number">To</option>
+              <option value="from_number">From</option>
               <option value="body">Body</option>
             </select>
             <input
               type="text"
-              placeholder="Search in international format"
+              placeholder="Search..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm w-full md:w-64 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             <button 
+              onClick={handleSearch}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm font-medium transition-colors"
+            >
+              SEARCH
+            </button>
+            <button 
               onClick={handleExport}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium transition-colors"
+              disabled={messages.length === 0}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               EXPORT
             </button>
@@ -237,28 +219,25 @@ export default function HistoryPage() {
             <thead className="border-b border-gray-200 bg-gray-50">
               <tr>
                 <th 
-                  onClick={() => handleSort('username')}
+                  onClick={() => handleSort('created_at')}
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                 >
-                  Username {getSortIcon('username')}
+                  Date {getSortIcon('created_at')}
                 </th>
                 <th 
-                  onClick={() => handleSort('date')}
+                  onClick={() => handleSort('from_number')}
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                 >
-                  Date {getSortIcon('date')}
+                  From {getSortIcon('from_number')}
                 </th>
                 <th 
-                  onClick={() => handleSort('from')}
+                  onClick={() => handleSort('to_number')}
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                 >
-                  From {getSortIcon('from')}
+                  To {getSortIcon('to_number')}
                 </th>
-                <th 
-                  onClick={() => handleSort('to')}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                >
-                  To {getSortIcon('to')}
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contact
                 </th>
                 <th 
                   onClick={() => handleSort('status')}
@@ -272,29 +251,38 @@ export default function HistoryPage() {
                 >
                   Body {getSortIcon('body')}
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Cost
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {sortedMessages.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                    Loading messages...
+                  </td>
+                </tr>
+              ) : messages.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                     No messages found
                   </td>
                 </tr>
               ) : (
-                sortedMessages.map((msg) => (
+                messages.map((msg) => (
                   <tr key={msg.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {msg.username}
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {msg.date}
+                      {formatDate(msg.createdAt)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {msg.from}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {msg.to}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {msg.contactName || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-3 py-1 text-xs font-medium text-white rounded-full ${getStatusColor(msg.status)}`}>
@@ -304,6 +292,9 @@ export default function HistoryPage() {
                     <td className="px-6 py-4 text-sm text-gray-900 max-w-lg">
                       <div className="line-clamp-2">{msg.body}</div>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      ${(msg.priceCents / 100).toFixed(3)}
+                    </td>
                   </tr>
                 ))
               )}
@@ -311,14 +302,77 @@ export default function HistoryPage() {
           </table>
         </div>
 
-        {/* Summary */}
+        {/* Pagination */}
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
           <div className="text-sm text-gray-700">
-            Showing {sortedMessages.length} of {messages.length} messages
+            Showing {Math.min((currentPage - 1) * itemsPerPage + 1, totalMessages)} - {Math.min(currentPage * itemsPerPage, totalMessages)} of {totalMessages} messages
           </div>
-          {(fromDate || toDate || searchTerm) && (
-            <div className="text-sm text-blue-600">
-              Filters active
+          
+          {totalPages > 1 && (
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <MdChevronLeft className="w-5 h-5" />
+              </button>
+              
+              <div className="flex items-center space-x-1">
+                {currentPage > 2 && (
+                  <>
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      1
+                    </button>
+                    {currentPage > 3 && <span className="text-gray-500">...</span>}
+                  </>
+                )}
+                
+                {currentPage > 1 && (
+                  <button
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    {currentPage - 1}
+                  </button>
+                )}
+                
+                <button className="px-3 py-1 bg-blue-500 text-white rounded-md">
+                  {currentPage}
+                </button>
+                
+                {currentPage < totalPages && (
+                  <button
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    {currentPage + 1}
+                  </button>
+                )}
+                
+                {currentPage < totalPages - 1 && (
+                  <>
+                    {currentPage < totalPages - 2 && <span className="text-gray-500">...</span>}
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+              </div>
+              
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <MdChevronRight className="w-5 h-5" />
+              </button>
             </div>
           )}
         </div>

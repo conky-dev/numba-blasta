@@ -375,6 +375,33 @@ class ApiClient {
     }) => {
       return this.post('/api/sms/bulk-send', data);
     },
+
+    /**
+     * Get SMS message history with pagination
+     */
+    getMessages: async (params: {
+      limit?: number;
+      offset?: number;
+      search?: string;
+      searchField?: 'to_number' | 'from_number' | 'body';
+      fromDate?: string;
+      toDate?: string;
+      sortField?: 'created_at' | 'to_number' | 'from_number' | 'status' | 'body';
+      sortDirection?: 'asc' | 'desc';
+    } = {}) => {
+      const queryParams = new URLSearchParams();
+      
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+      if (params.search) queryParams.append('search', params.search);
+      if (params.searchField) queryParams.append('searchField', params.searchField);
+      if (params.fromDate) queryParams.append('fromDate', params.fromDate);
+      if (params.toDate) queryParams.append('toDate', params.toDate);
+      if (params.sortField) queryParams.append('sortField', params.sortField);
+      if (params.sortDirection) queryParams.append('sortDirection', params.sortDirection);
+
+      return this.get(`/api/sms/messages?${queryParams.toString()}`);
+    },
   };
 
   // ============================================
