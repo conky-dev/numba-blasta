@@ -170,7 +170,7 @@ try {
               COUNT(DISTINCT co.id) as total_recipients,
               COUNT(m.id) as messages_sent
              FROM sms_campaigns c
-             LEFT JOIN contacts co ON co.org_id = c.org_id AND co.deleted_at IS NULL AND co.opted_out = false
+             LEFT JOIN contacts co ON co.org_id = c.org_id AND co.deleted_at IS NULL AND co.opted_out_at IS NULL
              LEFT JOIN sms_messages m ON m.campaign_id = c.id
              WHERE c.id = $1
              GROUP BY c.id, c.status`,
