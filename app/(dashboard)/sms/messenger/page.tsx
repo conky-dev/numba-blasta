@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { MdSearch, MdPhoneIphone, MdMoreVert, MdRefresh } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 import AlertModal from '@/components/modals/AlertModal'
@@ -46,6 +46,20 @@ export default function MessengerPage() {
     title: '',
     type: 'info'
   })
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+
+  // Scroll when selected conversation messages change
+  useEffect(() => {
+    if (selectedConversation?.messages?.length > 0) {
+      setTimeout(scrollToBottom, 100) // Small delay to ensure DOM is updated
+    }
+  }, [selectedConversation?.messages, scrollToBottom])
 
   // Load conversations ONCE on mount
   useEffect(() => {
@@ -244,20 +258,10 @@ export default function MessengerPage() {
 
       setNewMessage('')
       
-      setAlertModal({
-        isOpen: true,
-        message: 'Message queued for sending',
-        title: 'Success',
-        type: 'success'
-      })
+      // Don't show success modal in messenger
     } catch (error: any) {
       console.error('Failed to send message:', error)
-      setAlertModal({
-        isOpen: true,
-        message: error.message || 'Failed to send message',
-        title: 'Error',
-        type: 'error'
-      })
+      // Don't show error modal in messenger - just log it
     } finally {
       setSending(false)
     }
@@ -303,20 +307,10 @@ export default function MessengerPage() {
         return conv
       }))
 
-      setAlertModal({
-        isOpen: true,
-        message: 'Simulated inbound message received!',
-        title: 'Success',
-        type: 'success'
-      })
+      // Don't show success modal in messenger
     } catch (error: any) {
       console.error('Failed to simulate reply:', error)
-      setAlertModal({
-        isOpen: true,
-        message: error.message || 'Failed to simulate reply',
-        title: 'Error',
-        type: 'error'
-      })
+      // Don't show error modal in messenger - just log it
     } finally {
       setSimulating(false)
     }
@@ -450,25 +444,29 @@ export default function MessengerPage() {
                   No messages yet. Start the conversation!
                 </div>
               ) : (
-                selectedConversation.messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.isOutgoing ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`max-w-[70%] rounded-2xl px-4 py-2 ${
-                      message.isOutgoing
-                        ? 'bg-blue-500 text-white rounded-br-sm'
-                        : 'bg-white text-gray-900 rounded-bl-sm'
-                    }`}>
-                      <p className="text-sm break-words">{message.text}</p>
-                      <p className={`text-xs mt-1 ${
-                        message.isOutgoing ? 'text-blue-100' : 'text-gray-500'
+                <>
+                  {selectedConversation.messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.isOutgoing ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+                        message.isOutgoing
+                          ? 'bg-blue-500 text-white rounded-br-sm'
+                          : 'bg-white text-gray-900 rounded-bl-sm'
                       }`}>
-                        {message.timestamp}
-                      </p>
+                        <p className="text-sm break-words">{message.text}</p>
+                        <p className={`text-xs mt-1 ${
+                          message.isOutgoing ? 'text-blue-100' : 'text-gray-500'
+                        }`}>
+                          {message.timestamp}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                  {/* Invisible div for auto-scroll */}
+                  <div ref={messagesEndRef} />
+                </>
               )}
             </div>
 
