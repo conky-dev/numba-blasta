@@ -185,7 +185,7 @@ try {
             await query(
               `UPDATE sms_campaigns
                SET status = 'completed',
-                   ended_at = NOW(),
+                   completed_at = NOW(),
                    updated_at = NOW()
                WHERE id = $1`,
               [campaignId]
@@ -302,7 +302,7 @@ try {
           await query(
             `UPDATE sms_campaigns
              SET status = 'completed',
-                 ended_at = NOW(),
+                 completed_at = NOW(),
                  updated_at = NOW()
              WHERE id = $1`,
             [campaignId]
