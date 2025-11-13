@@ -179,12 +179,12 @@ try {
           
           const stats = campaignStatsResult.rows[0];
           
-          // If all messages have been sent, mark campaign as completed
+          // If all messages have been sent, mark campaign as done
           if (stats && stats.status === 'running' && stats.messages_sent >= stats.total_recipients) {
             console.log(`[WORKER] 🎉 Campaign ${campaignId} complete! (${stats.messages_sent}/${stats.total_recipients})`);
             await query(
               `UPDATE sms_campaigns
-               SET status = 'completed',
+               SET status = 'done',
                    completed_at = NOW(),
                    updated_at = NOW()
                WHERE id = $1`,
@@ -301,7 +301,7 @@ try {
           console.warn(`[CAMPAIGN] No contacts found for campaign ${campaignId}`);
           await query(
             `UPDATE sms_campaigns
-             SET status = 'completed',
+             SET status = 'done',
                  completed_at = NOW(),
                  updated_at = NOW()
              WHERE id = $1`,
