@@ -402,6 +402,52 @@ class ApiClient {
 
       return this.get(`/api/sms/messages?${queryParams.toString()}`);
     },
+
+    /**
+     * Get conversation list
+     */
+    getConversations: async (params: {
+      limit?: number;
+      offset?: number;
+      search?: string;
+    } = {}) => {
+      const queryParams = new URLSearchParams();
+      
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+      if (params.search) queryParams.append('search', params.search);
+
+      return this.get(`/api/sms/conversations?${queryParams.toString()}`);
+    },
+
+    /**
+     * Get messages for a specific conversation
+     */
+    getConversationMessages: async (contactId: string, params: {
+      limit?: number;
+      offset?: number;
+    } = {}) => {
+      const queryParams = new URLSearchParams();
+      
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+
+      return this.get(`/api/sms/conversations/${contactId}/messages?${queryParams.toString()}`);
+    },
+
+    /**
+     * Send a reply in a conversation
+     */
+    sendReply: async (contactId: string, message: string) => {
+      return this.post(`/api/sms/conversations/${contactId}/reply`, { message });
+    },
+
+    /**
+     * Simulate an inbound message (for testing)
+     */
+    simulateInbound: async (contactId: string) => {
+      return this.post(`/api/sms/conversations/${contactId}/simulate-reply`, {});
+    },
   };
 
   // ============================================
