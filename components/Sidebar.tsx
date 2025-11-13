@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { MdDashboard, MdContacts, MdMessage, MdLogout, MdClose, MdPerson, MdBusiness, MdPersonAdd } from 'react-icons/md'
+import { MdDashboard, MdContacts, MdMessage, MdLogout, MdClose, MdPerson, MdBusiness, MdPersonAdd, MdSettings } from 'react-icons/md'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import InviteMemberModal from '@/components/modals/InviteMemberModal'
 import { api } from '@/lib/api-client'
@@ -28,6 +28,13 @@ const menuItems = [
       { name: 'Templates', href: '/sms/templates' },
       { name: 'Messenger', href: '/sms/messenger' },
       { name: 'History', href: '/sms/history' },
+    ]
+  },
+  {
+    name: 'Settings',
+    icon: MdSettings,
+    submenu: [
+      { name: 'Team', href: '/settings/team' },
     ]
   },
 ]
@@ -194,7 +201,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {menuItems.map((item) => (
+          {menuItems
+            .filter((item) => {
+              // Hide Settings menu for regular members
+              if (item.name === 'Settings') {
+                return userInfo && (userInfo.role === 'owner' || userInfo.role === 'admin')
+              }
+              return true
+            })
+            .map((item) => (
             <div key={item.name}>
               {item.submenu ? (
                 <>

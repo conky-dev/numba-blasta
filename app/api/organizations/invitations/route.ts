@@ -117,11 +117,16 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/organizations/invitations
- * List organization invitations
+ * List organization invitations (admin/owner only)
  */
 export async function GET(request: NextRequest) {
   try {
-    const { orgId } = await authenticateRequest(request);
+    const authContext = await authenticateRequest(request);
+    const { orgId } = authContext;
+    
+    // Require admin or owner
+    requireAdmin(authContext);
+    
     const { searchParams } = new URL(request.url);
     
     const status = searchParams.get('status') || 'pending';
