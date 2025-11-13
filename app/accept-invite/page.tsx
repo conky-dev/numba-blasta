@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { MdCheckCircle, MdError, MdGroupAdd, MdInfo } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
@@ -9,6 +9,7 @@ export default function AcceptInvitePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams?.get('token')
+  const autoAccept = searchParams?.get('autoAccept') === 'true'
 
   const [loading, setLoading] = useState(true)
   const [inviteDetails, setInviteDetails] = useState<any>(null)
@@ -81,15 +82,24 @@ export default function AcceptInvitePage() {
     validateInvite()
   }, [token])
 
-  const handleAccept = async () => {
+  // Auto-accept if coming from signup
+  useEffect(() => {
+    if (autoAccept && inviteDetails && isLoggedIn && !accepting && !error) {
+      console.log('🚀 Auto-accepting invitation after signup...')
+      handleAccept()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAccept, inviteDetails, isLoggedIn, accepting, error])
+
+  const handleAccept = useCallback(async () => {
     setAccepting(true)
 
     try {
       const authToken = localStorage.getItem('auth_token')
       
       if (!authToken) {
-        // Not logged in, redirect to signup with return URL
-        router.push(`/signup?redirect=/accept-invite?token=${token}`)
+        // Not logged in, redirect to signup with return URL and auto-accept flag
+        router.push(`/signup?redirect=${encodeURIComponent(`/accept-invite?token=${token}&autoAccept=true`)}`)
         return
       }
 
@@ -142,7 +152,7 @@ export default function AcceptInvitePage() {
     } finally {
       setAccepting(false)
     }
-  }
+  }, [token, router, setAlertModal, setAccepting])
 
   const handleDecline = () => {
     router.push('/')
