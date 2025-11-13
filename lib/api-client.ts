@@ -302,6 +302,13 @@ class ApiClient {
 
       return { data, success: true };
     },
+
+    /**
+     * Get categories with contact counts
+     */
+    getCategoriesWithCounts: async () => {
+      return this.get('/api/contacts/categories');
+    },
   };
 
   // ============================================

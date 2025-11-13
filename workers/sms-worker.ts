@@ -231,7 +231,7 @@ try {
         // Step 1: Get campaign details
         console.log(`[CAMPAIGN] Fetching campaign ${campaignId}`);
         const campaignResult = await query(
-          `SELECT id, name, message, template_id, org_id, status
+          `SELECT id, name, message, template_id, org_id, status, target_categories
            FROM sms_campaigns
            WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
           [campaignId, orgId]
@@ -242,6 +242,9 @@ try {
         }
         
         const campaign = campaignResult.rows[0];
+        const targetCategories = campaign.target_categories;
+        
+        console.log(`[CAMPAIGN] Target categories:`, targetCategories || 'ALL CONTACTS');
         
         // Step 2: Update campaign status to 'running' if it was 'scheduled'
         if (campaign.status === 'scheduled') {
@@ -256,15 +259,40 @@ try {
           console.log(`[CAMPAIGN] Campaign ${campaignId} status updated to 'running'`);
         }
         
-        // Step 3: Get all contacts for this org
+        // Step 3: Get contacts based on target categories
         console.log(`[CAMPAIGN] Fetching contacts for org ${orgId}`);
-        const contactsResult = await query(
-          `SELECT id, phone_number, first_name, last_name, email
-           FROM contacts
-           WHERE org_id = $1 AND deleted_at IS NULL AND opted_out = false
-           ORDER BY id`,
-          [orgId]
-        );
+        
+        let contactsQuery;
+        let contactsParams;
+        
+        if (targetCategories && targetCategories.length > 0) {
+          // Filter by categories using array overlap operator
+          contactsQuery = `
+            SELECT id, phone, first_name, last_name, email
+            FROM contacts
+            WHERE org_id = $1 
+              AND deleted_at IS NULL 
+              AND opted_out_at IS NULL
+              AND category && $2
+            ORDER BY id
+          `;
+          contactsParams = [orgId, targetCategories];
+          console.log(`[CAMPAIGN] Filtering by categories:`, targetCategories);
+        } else {
+          // Send to all contacts
+          contactsQuery = `
+            SELECT id, phone, first_name, last_name, email
+            FROM contacts
+            WHERE org_id = $1 
+              AND deleted_at IS NULL 
+              AND opted_out_at IS NULL
+            ORDER BY id
+          `;
+          contactsParams = [orgId];
+          console.log(`[CAMPAIGN] No category filter - sending to all contacts`);
+        }
+        
+        const contactsResult = await query(contactsQuery, contactsParams);
         
         const contacts = contactsResult.rows;
         console.log(`[CAMPAIGN] Found ${contacts.length} contacts`);
@@ -303,7 +331,7 @@ try {
             renderedMessage = renderedMessage.replace(/\{\{email\}\}/g, contact.email || '');
             
             await smsQueue.add('send-sms', {
-              to: contact.phone_number,
+              to: contact.phone,
               message: renderedMessage,
               orgId,
               userId,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AlertModal from '@/components/modals/AlertModal'
 import { api } from '@/lib/api-client'
 
@@ -9,6 +9,12 @@ interface Campaign {
   from: string
   message: string
   recipients: string
+  targetCategories: string[]
+}
+
+interface Category {
+  name: string
+  count: number
 }
 
 interface CreateCampaignModalProps {
@@ -26,14 +32,81 @@ export default function CreateCampaignModal({
     name: '',
     from: 'smart',
     message: '',
-    recipients: ''
+    recipients: '',
+    targetCategories: []
   })
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loadingCategories, setLoadingCategories] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
     type: 'info'
   })
+
+  // Load categories when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadCategories()
+    }
+  }, [isOpen])
+
+  const loadCategories = async () => {
+    try {
+      setLoadingCategories(true)
+      const { data, error } = await api.contacts.getCategoriesWithCounts()
+      
+      if (error) {
+        console.error('Failed to load categories:', error)
+        return
+      }
+      
+      setCategories(data?.categories || [])
+    } catch (error) {
+      console.error('Load categories error:', error)
+    } finally {
+      setLoadingCategories(false)
+    }
+  }
+
+  const handleCategoryToggle = (categoryName: string) => {
+    if (categoryName === 'all') {
+      // Toggle "all" - if selected, deselect all, if not, select only "all"
+      if (formData.targetCategories.includes('all')) {
+        setFormData({ ...formData, targetCategories: [] })
+      } else {
+        setFormData({ ...formData, targetCategories: ['all'] })
+      }
+    } else {
+      // Toggle individual category
+      const newCategories = [...formData.targetCategories].filter(c => c !== 'all')
+      if (newCategories.includes(categoryName)) {
+        setFormData({ 
+          ...formData, 
+          targetCategories: newCategories.filter(c => c !== categoryName) 
+        })
+      } else {
+        setFormData({ 
+          ...formData, 
+          targetCategories: [...newCategories, categoryName] 
+        })
+      }
+    }
+  }
+
+  const getRecipientDisplay = () => {
+    if (formData.targetCategories.length === 0) {
+      return 'No recipients selected'
+    }
+    if (formData.targetCategories.includes('all')) {
+      const total = categories.reduce((sum, cat) => sum + cat.count, 0)
+      return `All contacts (${total})`
+    }
+    const selectedCount = categories
+      .filter(c => formData.targetCategories.includes(c.name))
+      .reduce((sum, cat) => sum + cat.count, 0)
+    return `${selectedCount} contact${selectedCount !== 1 ? 's' : ''} in ${formData.targetCategories.length} categor${formData.targetCategories.length !== 1 ? 'ies' : 'y'}`
+  }
 
   if (!isOpen) return null
 
@@ -48,13 +121,28 @@ export default function CreateCampaignModal({
       return
     }
 
+    if (formData.targetCategories.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Please select at least one recipient group',
+        title: 'No Recipients',
+        type: 'error'
+      })
+      return
+    }
+
     setIsLoading(true)
 
     try {
+      // Prepare target categories - null means "all", otherwise send the array
+      const targetCategories = formData.targetCategories.includes('all') 
+        ? null 
+        : formData.targetCategories
+
       const { error } = await api.campaigns.create({
         name: formData.name,
         message: formData.message,
-        // listId: formData.recipients, // Will be added when contact lists are implemented
+        targetCategories,
       })
 
       if (error) {
@@ -69,7 +157,7 @@ export default function CreateCampaignModal({
       })
 
       // Reset form
-      setFormData({ name: '', from: 'smart', message: '', recipients: '' })
+      setFormData({ name: '', from: 'smart', message: '', recipients: '', targetCategories: [] })
       
       // Wait a moment to show success message, then close and refresh
       setTimeout(() => {
@@ -93,7 +181,7 @@ export default function CreateCampaignModal({
   const handleClose = () => {
     if (!isLoading) {
       onClose()
-      setFormData({ name: '', from: 'smart', message: '', recipients: '' })
+      setFormData({ name: '', from: 'smart', message: '', recipients: '', targetCategories: [] })
     }
   }
 
@@ -114,33 +202,72 @@ export default function CreateCampaignModal({
               placeholder="Enter campaign name"
             />
           </div>
+          
+          {/* Recipients / Target Categories */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              From
+              Send To *
             </label>
-            <select
-              value={formData.from}
-              onChange={(e) => setFormData({ ...formData, from: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="smart">Smart Senders</option>
-              <option value="+1234567890">+1 (234) 567-890</option>
-              <option value="+1098765432">+1 (098) 765-432</option>
-            </select>
+            
+            {loadingCategories ? (
+              <div className="border border-gray-300 rounded-md p-4">
+                <p className="text-sm text-gray-500 text-center">Loading categories...</p>
+              </div>
+            ) : (
+              <div className="border border-gray-300 rounded-md p-3 space-y-2 max-h-48 overflow-y-auto">
+                {/* "All Contacts" option */}
+                <label className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                  <input
+                    type="checkbox"
+                    checked={formData.targetCategories.includes('all')}
+                    onChange={() => handleCategoryToggle('all')}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="flex-1 text-sm font-medium text-gray-900">
+                    All Contacts
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {categories.reduce((sum, cat) => sum + cat.count, 0)}
+                  </span>
+                </label>
+
+                <div className="border-t border-gray-200 my-2"></div>
+
+                {/* Category checkboxes */}
+                {categories.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-2">
+                    No contacts found. Add contacts to see categories.
+                  </p>
+                ) : (
+                  categories.map((category) => (
+                    <label 
+                      key={category.name}
+                      className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.targetCategories.includes(category.name)}
+                        onChange={() => handleCategoryToggle(category.name)}
+                        disabled={formData.targetCategories.includes('all')}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      <span className={`flex-1 text-sm ${formData.targetCategories.includes('all') ? 'text-gray-400' : 'text-gray-700'}`}>
+                        {category.name}
+                      </span>
+                      <span className={`text-sm ${formData.targetCategories.includes('all') ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {category.count}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+            
+            <p className="mt-2 text-xs text-gray-500">
+              {getRecipientDisplay()}
+            </p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Recipients (Upload List)
-            </label>
-            <input
-              type="number"
-              value={formData.recipients}
-              onChange={(e) => setFormData({ ...formData, recipients: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Number of recipients"
-            />
-            <p className="mt-1 text-xs text-gray-500">In production, this would be a file upload for contact lists</p>
-          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Message *

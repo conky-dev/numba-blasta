@@ -80,7 +80,7 @@ export async function POST(
     await query(
       `UPDATE sms_campaigns
        SET status = 'draft',
-           scheduled_at = NULL,
+           schedule_at = NULL,
            updated_at = NOW()
        WHERE id = $1`,
       [campaignId]

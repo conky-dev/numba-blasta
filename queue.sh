@@ -1,0 +1,15 @@
+# Count SMS queue jobs by state
+REDIS_URL=rediss://default:AXd6AAIncDIwYWMxYjc3MGI0ODY0YWRlOTk3NWU3NzVkZDg5OGMzY3AyMzA1ODY@mutual-falcon-30586.upstash.io:6379
+echo "SMS Queue:"
+echo "  Waiting: $(redis-cli -u $REDIS_URL LLEN bull:sms:wait)"
+echo "  Active: $(redis-cli -u $REDIS_URL LLEN bull:sms:active)"
+echo "  Delayed: $(redis-cli -u $REDIS_URL ZCARD bull:sms:delayed)"
+echo "  Completed: $(redis-cli -u $REDIS_URL ZCARD bull:sms:completed)"
+echo "  Failed: $(redis-cli -u $REDIS_URL ZCARD bull:sms:failed)"
+echo ""
+echo "Campaign Queue:"
+echo "  Waiting: $(redis-cli -u $REDIS_URL LLEN bull:campaigns:wait)"
+echo "  Active: $(redis-cli -u $REDIS_URL LLEN bull:campaigns:active)"
+echo "  Delayed: $(redis-cli -u $REDIS_URL ZCARD bull:campaigns:delayed)"
+echo "  Completed: $(redis-cli -u $REDIS_URL ZCARD bull:campaigns:completed)"
+echo "  Failed: $(redis-cli -u $REDIS_URL ZCARD bull:campaigns:failed)"

@@ -31,7 +31,7 @@ export async function POST(
 
     // Get campaign and verify ownership & status
     const campaignResult = await query(
-      `SELECT id, org_id, status, list_id, message, template_id, scheduled_at
+      `SELECT id, org_id, status, list_id, message, template_id, schedule_at
        FROM sms_campaigns 
        WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
       [campaignId, orgId]
@@ -60,7 +60,7 @@ export async function POST(
     }
 
     // Determine if this is scheduled or immediate
-    const scheduleTime = scheduledAt || campaign.scheduled_at;
+    const scheduleTime = scheduledAt || campaign.schedule_at;
     const isScheduled = !!scheduleTime;
     
     if (isScheduled) {
@@ -85,7 +85,7 @@ export async function POST(
       await query(
         `UPDATE sms_campaigns
          SET status = 'scheduled',
-             scheduled_at = $1,
+             schedule_at = $1,
              updated_at = NOW()
          WHERE id = $2 AND org_id = $3`,
         [scheduledDate, campaignId, orgId]
@@ -112,7 +112,7 @@ export async function POST(
         campaign: {
           id: campaignId,
           status: 'scheduled',
-          scheduled_at: scheduledDate,
+          schedule_at: scheduledDate,
         },
       });
     } else {
