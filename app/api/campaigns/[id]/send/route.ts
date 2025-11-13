@@ -12,12 +12,7 @@ export async function POST(
 ) {
   try {
     // Authenticate request
-    const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated || !authResult.userId || !authResult.orgId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { userId, orgId } = authResult;
+    const { userId, orgId } = await authenticateRequest(request);
     const { id: campaignId } = await params;
 
     // Get campaign and verify ownership & status

@@ -25,9 +25,16 @@ export async function POST(request: NextRequest) {
     // Get the form data
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const category = (formData.get('category') as string) || 'Other';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    // Parse category into array (support comma-separated)
+    const categoryArray = category.split(',').map(c => c.trim()).filter(c => c.length > 0);
+    if (categoryArray.length === 0) {
+      categoryArray.push('Other');
     }
 
     // Check file type
@@ -126,23 +133,33 @@ export async function POST(request: NextRequest) {
         } else {
           // Insert new contact
           await query(
-            `INSERT INTO contacts (org_id, phone, first_name, last_name, email)
-             VALUES ($1, $2, $3, $4, $5)`,
+            `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
             [
               orgId,
               phone,
               row.first_name || row.firstName || null,
               row.last_name || row.lastName || null,
               row.email || null,
+              categoryArray,
             ]
           );
           results.created++;
         }
       } catch (error: any) {
         console.error(`Error processing row ${i + 2}:`, error);
+        console.error(`Phone: ${phone}, Category: ${JSON.stringify(categoryArray)}`);
         results.skipped++;
         results.errors.push(`Row ${i + 2}: ${error.message}`);
       }
+    }
+
+    // Refresh materialized view for category counts
+    try {
+      await query('REFRESH MATERIALIZED VIEW contact_category_counts');
+    } catch (error) {
+      console.warn('Failed to refresh category counts view:', error);
+      // Non-fatal - counts will be slightly stale but still work
     }
 
     return NextResponse.json({

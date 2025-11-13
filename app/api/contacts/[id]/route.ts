@@ -18,7 +18,7 @@ export async function GET(
 
     // Get contact
     const result = await query(
-      `SELECT id, org_id, phone, first_name, last_name, email,
+      `SELECT id, org_id, phone, first_name, last_name, email, category,
               opted_out_at, created_at, updated_at
        FROM contacts
        WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
@@ -65,7 +65,7 @@ export async function PATCH(
     const { orgId } = authResult;
     const { id: contactId } = await params;
     const body = await request.json();
-    const { firstName, lastName, phone, email } = body;
+    const { firstName, lastName, phone, email, category } = body;
 
     // Verify contact exists and belongs to org
     const existingContact = await query(
@@ -128,6 +128,26 @@ export async function PATCH(
       queryParams.push(email || null);
       paramIndex++;
     }
+    if (category !== undefined) {
+      // Normalize category to array
+      let categoryArray: string[];
+      if (Array.isArray(category)) {
+        categoryArray = category.filter(c => c && c.trim().length > 0);
+      } else if (category && typeof category === 'string') {
+        categoryArray = [category];
+      } else {
+        categoryArray = ['Other'];
+      }
+      
+      // Ensure at least one category
+      if (categoryArray.length === 0) {
+        categoryArray = ['Other'];
+      }
+      
+      updates.push(`category = $${paramIndex}`);
+      queryParams.push(categoryArray);
+      paramIndex++;
+    }
 
     if (updates.length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
@@ -140,7 +160,7 @@ export async function PATCH(
       `UPDATE contacts
        SET ${updates.join(', ')}
        WHERE id = $${paramIndex} AND org_id = $${paramIndex + 1}
-       RETURNING id, org_id, phone, first_name, last_name, email,
+       RETURNING id, org_id, phone, first_name, last_name, email, category,
                  opted_out_at, created_at, updated_at`,
       queryParams
     );

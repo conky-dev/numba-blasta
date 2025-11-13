@@ -6,6 +6,11 @@ import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import { api } from '@/lib/api-client'
 
+interface Category {
+  name: string
+  count: number
+}
+
 interface Contact {
   id: string
   first_name?: string
@@ -22,13 +27,17 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalContacts, setTotalContacts] = useState(0)
-  const itemsPerPage = 15
+  const [categories, setCategories] = useState<Category[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string>('Other')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const itemsPerPage = 15
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -55,6 +64,28 @@ export default function ContactsPage() {
     // Fetch contacts when page or search changes
     fetchContacts(currentPage)
   }, [currentPage, searchTerm])
+
+  useEffect(() => {
+    // Load categories once
+    loadCategories()
+  }, [])
+
+  const loadCategories = async () => {
+    try {
+      const response = await fetch('/api/contacts/categories', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.categories || [])
+      }
+    } catch (error) {
+      console.error('Failed to load categories:', error)
+    }
+  }
 
   const fetchContacts = async (page: number) => {
     try {
@@ -247,18 +278,11 @@ export default function ContactsPage() {
     setEditingContact(null)
   }
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
+  const handleImport = async (file: File) => {
     setImporting(true)
 
     try {
-      const { data, error } = await api.contacts.import(file)
+      const { data, error } = await api.contacts.import(file, selectedCategory)
 
       if (error) {
         throw new Error(error)
@@ -268,14 +292,15 @@ export default function ContactsPage() {
       
       setAlertModal({
         isOpen: true,
-        message: `Import completed!\n\nCreated: ${results?.created || 0}\nUpdated: ${results?.updated || 0}\nSkipped: ${results?.skipped || 0}\n\n${results?.errors?.length > 0 ? `Errors: ${results.errors.slice(0, 5).join(', ')}${results.errors.length > 5 ? '...' : ''}` : ''}`,
+        message: `Import completed!\n\nCreated: ${results?.created || 0}\nUpdated: ${results?.updated || 0}\nSkipped: ${results?.skipped || 0}\n\nAll contacts assigned to category: ${selectedCategory}\n\n${results?.errors?.length > 0 ? `Errors: ${results.errors.slice(0, 5).join(', ')}${results.errors.length > 5 ? '...' : ''}` : ''}`,
         title: 'Import Complete',
         type: results?.skipped === 0 ? 'success' : 'info'
       })
-
-      // Refresh contacts list - go back to page 1
+      
+      // Refresh contacts list and categories
       setCurrentPage(1)
       await fetchContacts(1)
+      await loadCategories()
     } catch (error: any) {
       console.error('Import error:', error)
       setAlertModal({
@@ -290,6 +315,31 @@ export default function ContactsPage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
+    }
+  }
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    
+    // Store file and show confirmation modal
+    setPendingFile(file)
+    setShowImportModal(true)
+  }
+
+  const handleConfirmImport = async () => {
+    if (!pendingFile) return
+    await handleImport(pendingFile)
+    setPendingFile(null)
+    setShowImportModal(false)
+  }
+
+  const handleCancelImport = () => {
+    setPendingFile(null)
+    setShowImportModal(false)
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
@@ -316,12 +366,12 @@ export default function ContactsPage() {
         <h1 className="text-xl md:text-2xl font-semibold text-gray-800">Contacts</h1>
         <div className="flex space-x-2">
           <button
-            onClick={handleImportClick}
+            onClick={() => fileInputRef.current?.click()}
             disabled={importing}
             className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors disabled:bg-green-300 disabled:cursor-not-allowed flex items-center space-x-2"
           >
             <MdUpload className="w-5 h-5" />
-            <span>{importing ? 'Importing...' : 'Import CSV'}</span>
+            <span>Import CSV</span>
           </button>
           <button
             onClick={() => setShowModal(true)}
@@ -605,6 +655,72 @@ export default function ContactsPage() {
         title={confirmModal.title}
         onConfirm={confirmModal.onConfirm}
       />
+
+      {/* Import Confirmation Modal */}
+      {showImportModal && pendingFile && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm CSV Import</h2>
+            
+            <div className="space-y-4 mb-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <p className="text-sm text-blue-900">
+                  <span className="font-medium">File:</span> {pendingFile.name}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Assign Category
+                </label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  disabled={importing}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                >
+                  {categories.length === 0 ? (
+                    <option value="Other">Other (Default)</option>
+                  ) : (
+                    categories.map((category) => (
+                      <option key={category.name} value={category.name}>
+                        {category.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  All imported contacts will be assigned to this category
+                </p>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                <p className="text-xs text-gray-700">
+                  <span className="font-medium">Expected CSV format:</span><br />
+                  <code className="text-xs bg-gray-100 px-1 rounded">first_name, last_name, phone, email</code>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleCancelImport}
+                disabled={importing}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                disabled={importing}
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {importing ? 'Importing...' : 'Import'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

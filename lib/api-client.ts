@@ -267,9 +267,12 @@ class ApiClient {
     /**
      * Import contacts from CSV
      */
-    import: async (file: File) => {
+    import: async (file: File, category?: string) => {
       const formData = new FormData();
       formData.append('file', file);
+      if (category) {
+        formData.append('category', category);
+      }
       
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       if (!token) {

@@ -13,8 +13,16 @@ interface Template {
   content: string  // Changed from 'body' to 'content'
 }
 
+interface Category {
+  name: string
+  count: number
+}
+
 export default function QuickSMSPage() {
-  const [to, setTo] = useState<'all' | 'custom'>('all') // Changed to dropdown selection
+  const [to, setTo] = useState<string[]>(['all']) // Changed to array for multi-select
+  const [categories, setCategories] = useState<Category[]>([])
+  const [totalContacts, setTotalContacts] = useState(0)
+  const [loadingCategories, setLoadingCategories] = useState(true)
   const [from, setFrom] = useState('smart')
   const [message, setMessage] = useState('')
   const [sendTime, setSendTime] = useState('now')
@@ -40,6 +48,32 @@ export default function QuickSMSPage() {
     })
   }, [])
 
+  // Load contact categories with counts
+  useEffect(() => {
+    const loadCategories = async () => {
+      setLoadingCategories(true)
+      try {
+        const response = await fetch('/api/contacts/categories', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setCategories(data.categories || [])
+          setTotalContacts(data.total || 0)
+        }
+      } catch (error) {
+        console.error('Failed to load categories:', error)
+      } finally {
+        setLoadingCategories(false)
+      }
+    }
+
+    loadCategories()
+  }, [])
+
   // Calculate SMS segments (160 chars per segment)
   const charCount = message?.length || 0
   const smsCount = Math.ceil(charCount / 160) || 1
@@ -63,10 +97,11 @@ export default function QuickSMSPage() {
     setSending(true)
 
     try {
-      // If "All Contacts" is selected, use bulk send
-      if (to === 'all') {
+      // If "All Contacts" or categories are selected, use bulk send
+      if (to.length > 0) {
         const sendData: any = {
           message,
+          categories: to, // Pass the selected categories array
         }
 
         // Add template if selected
@@ -106,12 +141,12 @@ export default function QuickSMSPage() {
           setSendTime('now')
         }
       } else {
-        // Custom list selected (coming soon)
+        // No categories selected
         setAlertModal({
           isOpen: true,
-          message: 'Custom lists coming soon! For now, use "All Contacts".',
-          title: 'Feature Coming Soon',
-          type: 'info'
+          message: 'Please select at least one category to send to',
+          title: 'No Recipients Selected',
+          type: 'error'
         })
       }
     } catch (error: any) {
@@ -124,6 +159,48 @@ export default function QuickSMSPage() {
     } finally {
       setSending(false)
     }
+  }
+
+  const handleCategoryToggle = (category: string) => {
+    if (category === 'all') {
+      // Toggle all - if 'all' is selected, deselect everything, otherwise select 'all'
+      if (to.includes('all')) {
+        setTo([])
+      } else {
+        setTo(['all'])
+      }
+    } else {
+      // Remove 'all' if a specific category is selected
+      const newSelection = to.filter(c => c !== 'all')
+      
+      if (newSelection.includes(category)) {
+        // Remove the category
+        const updated = newSelection.filter(c => c !== category)
+        setTo(updated.length === 0 ? ['all'] : updated)
+      } else {
+        // Add the category
+        setTo([...newSelection, category])
+      }
+    }
+  }
+
+  const getRecipientDisplay = () => {
+    if (to.includes('all')) {
+      return `All Contacts (${totalContacts})`
+    }
+    
+    const selectedCategories = categories.filter(cat => to.includes(cat.name))
+    const totalCount = selectedCategories.reduce((sum, cat) => sum + cat.count, 0)
+    
+    if (selectedCategories.length === 0) {
+      return 'No recipients selected'
+    }
+    
+    if (selectedCategories.length === 1) {
+      return `${selectedCategories[0].name} (${selectedCategories[0].count})`
+    }
+    
+    return `${selectedCategories.length} categories (${totalCount} contacts)`
   }
 
   const insertPlaceholder = (placeholder: string) => {
@@ -171,16 +248,63 @@ export default function QuickSMSPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Send To
             </label>
-            <select
-              value={to}
-              onChange={(e) => setTo(e.target.value as 'all' | 'custom')}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Contacts</option>
-              <option value="custom" disabled>Custom List (Coming Soon)</option>
-            </select>
-            <p className="mt-1 text-xs text-gray-500">
-              {to === 'all' ? 'Will send to all non-opted-out contacts in your organization' : 'Select a custom list'}
+            
+            {loadingCategories ? (
+              <div className="p-4 border border-gray-300 rounded-md text-center text-gray-500">
+                Loading categories...
+              </div>
+            ) : (
+              <div className="border border-gray-300 rounded-md p-4 space-y-2 max-h-64 overflow-y-auto">
+                {/* All Contacts option */}
+                <label className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                  <input
+                    type="checkbox"
+                    checked={to.includes('all')}
+                    onChange={() => handleCategoryToggle('all')}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="flex-1 text-sm font-medium text-gray-900">
+                    All Contacts
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {totalContacts}
+                  </span>
+                </label>
+
+                <div className="border-t border-gray-200 my-2"></div>
+
+                {/* Category checkboxes */}
+                {categories.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-2">
+                    No contacts found. Add contacts to see categories.
+                  </p>
+                ) : (
+                  categories.map((category) => (
+                    <label 
+                      key={category.name}
+                      className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={to.includes(category.name)}
+                        onChange={() => handleCategoryToggle(category.name)}
+                        disabled={to.includes('all')}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      <span className={`flex-1 text-sm ${to.includes('all') ? 'text-gray-400' : 'text-gray-700'}`}>
+                        {category.name}
+                      </span>
+                      <span className={`text-sm ${to.includes('all') ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {category.count}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+            
+            <p className="mt-2 text-xs text-gray-500">
+              {getRecipientDisplay()}
             </p>
           </div>
 
@@ -352,7 +476,7 @@ export default function QuickSMSPage() {
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}
         onConfirm={handleSend}
-        to={to === 'all' ? 'All Contacts' : 'Custom List'}
+        to={getRecipientDisplay()}
         from={from}
         message={message}
         sendTime={sendTime}

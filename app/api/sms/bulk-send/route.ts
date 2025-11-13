@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { message, templateId, variables } = body;
+    const { message, templateId, variables, categories } = body; // Changed category to categories (array)
 
     // Resolve message body
     let messageBody = message;
@@ -54,22 +54,41 @@ export async function POST(request: NextRequest) {
 
     // Get all contacts in the org that haven't opted out (limit to 10k at a time)
     const BATCH_SIZE = 10000;
-    const contactsResult = await query(
-      `SELECT id, first_name, last_name, phone 
-       FROM contacts 
-       WHERE org_id = $1 
+    
+    // Build WHERE clause with optional category filter
+    let whereClause = `WHERE org_id = $1 
          AND opted_out_at IS NULL 
-         AND deleted_at IS NULL
+         AND deleted_at IS NULL`;
+    
+    const queryParams: any[] = [orgId];
+    let paramIndex = 2;
+    
+    // Handle multiple categories or 'all'
+    if (categories && Array.isArray(categories) && categories.length > 0 && !categories.includes('all')) {
+      // Use GIN index with array overlap operator (&&)
+      // This finds contacts where their category array overlaps with selected categories
+      whereClause += ` AND category && $${paramIndex}`;
+      queryParams.push(categories);
+      paramIndex++;
+    }
+    
+    const contactsResult = await query(
+      `SELECT id, first_name, last_name, phone, category
+       FROM contacts 
+       ${whereClause}
        ORDER BY created_at ASC
-       LIMIT $2`,
-      [orgId, BATCH_SIZE]
+       LIMIT $${paramIndex}`,
+      [...queryParams, BATCH_SIZE]
     );
 
     const contacts = contactsResult.rows;
 
     if (contacts.length === 0) {
       return NextResponse.json(
-        { error: 'No contacts found to send to' },
+        { error: categories && categories.length > 0 && !categories.includes('all')
+          ? `No contacts found in selected categories` 
+          : 'No contacts found to send to' 
+        },
         { status: 422 }
       );
     }
@@ -78,10 +97,8 @@ export async function POST(request: NextRequest) {
     const totalContactsResult = await query(
       `SELECT COUNT(*) as total
        FROM contacts 
-       WHERE org_id = $1 
-         AND opted_out_at IS NULL 
-         AND deleted_at IS NULL`,
-      [orgId]
+       ${whereClause}`,
+      queryParams.slice(0, paramIndex - 1)
     );
 
     const totalContacts = parseInt(totalContactsResult.rows[0]?.total || '0');

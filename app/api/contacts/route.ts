@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Build query
     let sqlQuery = `
       SELECT id, org_id, phone, first_name, last_name, email, 
-             opted_out_at, created_at, updated_at
+             category, opted_out_at, created_at, updated_at
       FROM contacts
       WHERE org_id = $1 AND deleted_at IS NULL
     `;
@@ -131,11 +131,26 @@ export async function POST(request: NextRequest) {
     const authResult = await authenticateRequest(request);
     const { userId, orgId } = authResult;
     const body = await request.json();
-    const { firstName, lastName, phone, email } = body;
+    const { firstName, lastName, phone, email, category } = body;
 
     // Validation
     if (!phone) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
+    }
+
+    // Normalize category to array
+    let categoryArray: string[];
+    if (Array.isArray(category)) {
+      categoryArray = category.filter(c => c && c.trim().length > 0);
+    } else if (category && typeof category === 'string') {
+      categoryArray = [category];
+    } else {
+      categoryArray = ['Other'];
+    }
+
+    // Ensure at least one category
+    if (categoryArray.length === 0) {
+      categoryArray = ['Other'];
     }
 
     // TODO: Normalize phone to E.164 format using libphonenumber-js
@@ -164,11 +179,11 @@ export async function POST(request: NextRequest) {
 
     // Create contact
     const result = await query(
-      `INSERT INTO contacts (org_id, phone, first_name, last_name, email)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, org_id, phone, first_name, last_name, email, 
+      `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, org_id, phone, first_name, last_name, email, category,
                  opted_out_at, created_at, updated_at`,
-      [orgId, phone, firstName || null, lastName || null, email || null]
+      [orgId, phone, firstName || null, lastName || null, email || null, categoryArray]
     );
 
     return NextResponse.json({
