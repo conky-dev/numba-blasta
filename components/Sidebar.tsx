@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { MdDashboard, MdContacts, MdMessage, MdLogout, MdClose } from 'react-icons/md'
+import { useState, useEffect } from 'react'
+import { MdDashboard, MdContacts, MdMessage, MdLogout, MdClose, MdPerson, MdBusiness } from 'react-icons/md'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import { api } from '@/lib/api-client'
 
@@ -41,6 +41,54 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter()
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({ SMS: true })
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [userInfo, setUserInfo] = useState<{
+    name: string
+    orgName: string
+    role: string
+  } | null>(null)
+
+  // Load user and org info
+  useEffect(() => {
+    async function loadUserInfo() {
+      try {
+        const token = localStorage.getItem('auth_token')
+        if (!token) return
+
+        const response = await fetch('/api/user/org-check', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+
+        const data = await response.json()
+        
+        if (response.ok && data.hasOrg) {
+          // Get user from localStorage
+          const userStr = localStorage.getItem('user')
+          const user = userStr ? JSON.parse(userStr) : null
+          
+          // Get org name from API (we'll need to add this)
+          const orgResponse = await fetch(`/api/organizations/${data.orgId}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          })
+          
+          const orgData = await orgResponse.json()
+          
+          setUserInfo({
+            name: user?.fullName || user?.email?.split('@')[0] || 'User',
+            orgName: orgData.organization?.name || 'Organization',
+            role: data.role || 'member',
+          })
+        }
+      } catch (error) {
+        console.error('Failed to load user info:', error)
+      }
+    }
+
+    loadUserInfo()
+  }, [])
 
   const toggleMenu = (menuName: string) => {
     setExpandedMenus(prev => ({
@@ -106,6 +154,31 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <MdClose className="w-5 h-5" />
           </button>
         </div>
+
+        {/* User & Org Info */}
+        {userInfo && (
+          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <MdPerson className="w-6 h-6 text-blue-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {userInfo.name}
+                </p>
+                <div className="flex items-center mt-1 text-xs text-gray-600">
+                  <MdBusiness className="w-3 h-3 mr-1 flex-shrink-0" />
+                  <span className="truncate">{userInfo.orgName}</span>
+                </div>
+                <div className="mt-1">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 capitalize">
+                    {userInfo.role}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Navigation */}
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
