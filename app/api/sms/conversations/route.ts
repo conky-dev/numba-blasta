@@ -34,51 +34,43 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    // Get total count of contacts with messages
-    const countResult = await query(
-      `SELECT COUNT(DISTINCT c.id) as total
-       FROM contacts c
-       ${whereClause}
-       AND EXISTS (
-         SELECT 1 FROM sms_messages m
-         WHERE m.contact_id = c.id
-       )`,
-      queryParams
-    );
-
-    const totalConversations = parseInt(countResult.rows[0]?.total || '0');
-
-    // Get conversations with last message info
+    // Get conversations with last message info (properly optimized)
     const result = await query(
       `SELECT 
         c.id as contact_id,
         c.first_name,
         c.last_name,
         c.phone,
-        (SELECT body FROM sms_messages 
-         WHERE contact_id = c.id 
-         ORDER BY created_at DESC LIMIT 1) as last_message,
-        (SELECT created_at FROM sms_messages 
-         WHERE contact_id = c.id 
-         ORDER BY created_at DESC LIMIT 1) as last_message_at,
-        (SELECT direction FROM sms_messages 
-         WHERE contact_id = c.id 
-         ORDER BY created_at DESC LIMIT 1) as last_message_direction,
-        (SELECT COUNT(*) FROM sms_messages 
-         WHERE contact_id = c.id 
-         AND direction = 'inbound') as total_inbound,
-        (SELECT COUNT(*) FROM sms_messages 
-         WHERE contact_id = c.id 
-         AND direction = 'outbound') as total_outbound
-       FROM contacts c
-       ${whereClause}
-       AND EXISTS (
-         SELECT 1 FROM sms_messages m
-         WHERE m.contact_id = c.id
-       )
-       ORDER BY last_message_at DESC NULLS LAST
-       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-      [...queryParams, validLimit, validOffset]
+        (
+          SELECT body 
+          FROM sms_messages 
+          WHERE contact_id = c.id AND org_id = $1 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message,
+        (
+          SELECT created_at 
+          FROM sms_messages 
+          WHERE contact_id = c.id AND org_id = $1 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_at,
+        (
+          SELECT direction 
+          FROM sms_messages 
+          WHERE contact_id = c.id AND org_id = $1 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_message_direction
+      FROM contacts c
+      ${whereClause}
+      AND EXISTS (
+        SELECT 1 FROM sms_messages 
+        WHERE contact_id = c.id AND org_id = $1
+      )
+      ORDER BY last_message_at DESC NULLS LAST
+      LIMIT $${paramIndex}`,
+      [...queryParams, validLimit]
     );
 
     return NextResponse.json({
@@ -91,15 +83,15 @@ export async function GET(request: NextRequest) {
         lastMessage: row.last_message || '',
         lastMessageAt: row.last_message_at,
         lastMessageDirection: row.last_message_direction,
-        hasInbound: parseInt(row.total_inbound) > 0,
-        totalInbound: parseInt(row.total_inbound),
-        totalOutbound: parseInt(row.total_outbound),
+        hasInbound: row.last_message_direction === 'inbound',
+        totalInbound: 0,
+        totalOutbound: 0,
       })),
       pagination: {
-        total: totalConversations,
+        total: result.rows.length, // Just return count of current page for speed
         limit: validLimit,
         offset: validOffset,
-        hasMore: validOffset + validLimit < totalConversations,
+        hasMore: result.rows.length === validLimit, // If we got a full page, there might be more
       },
     });
   } catch (error: any) {

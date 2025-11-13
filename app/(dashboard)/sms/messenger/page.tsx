@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { MdSearch, MdPhoneIphone, MdMoreVert, MdRefresh } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 import AlertModal from '@/components/modals/AlertModal'
@@ -35,7 +35,6 @@ export default function MessengerPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [simulating, setSimulating] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean
     message: string
@@ -48,33 +47,33 @@ export default function MessengerPage() {
     type: 'info'
   })
 
-  // Prevent hydration mismatch
+  // Load conversations ONCE on mount
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    loadConversations()
+  }, []) // Empty deps - only run once
 
-  // Load conversations on mount
+  // Auto-refresh messages in selected conversation every 10 seconds (reduced frequency)
   useEffect(() => {
-    if (mounted) {
-      loadConversations()
-    }
-  }, [mounted])
-
-  // Auto-refresh messages in selected conversation every 5 seconds
-  useEffect(() => {
-    if (!mounted || !selectedConversation) return
+    if (!selectedConversation) return
 
     const interval = setInterval(() => {
       loadMessages(selectedConversation.contactId)
-    }, 5000) // Refresh every 5 seconds
+    }, 10000) // Refresh every 10 seconds (was 5)
 
     return () => clearInterval(interval)
-  }, [mounted, selectedConversation?.contactId])
+  }, [selectedConversation?.contactId])
 
   const loadConversations = async () => {
-    setLoading(true)
+    console.log('📋 Loading conversations...', Date.now())
+    // Don't block UI on subsequent loads
+    const isInitialLoad = conversations.length === 0
+    if (isInitialLoad) {
+      setLoading(true)
+    }
+    
     try {
-      const response = await api.sms.getConversations({ limit: 100 })
+      const response = await api.sms.getConversations({ limit: 20 }) // Reduced from 100
+      console.log('📋 Conversations API response received:', Date.now())
       
       if (response.error) {
         throw new Error(response.error)
@@ -93,23 +92,31 @@ export default function MessengerPage() {
         messagesLoaded: false,
       }))
 
+      console.log('📋 Conversations mapped, setting state:', Date.now())
       setConversations(convos)
+      console.log('📋 Conversations state set:', Date.now())
     } catch (error: any) {
       console.error('Failed to load conversations:', error)
-      setAlertModal({
-        isOpen: true,
-        message: error.message || 'Failed to load conversations',
-        title: 'Error',
-        type: 'error'
-      })
+      if (isInitialLoad) {
+        setAlertModal({
+          isOpen: true,
+          message: error.message || 'Failed to load conversations',
+          title: 'Error',
+          type: 'error'
+        })
+      }
     } finally {
-      setLoading(false)
+      if (isInitialLoad) {
+        setLoading(false)
+      }
     }
   }
 
-  const loadMessages = async (contactId: string) => {
+  const loadMessages = useCallback(async (contactId: string) => {
+    console.log('🔄 Loading messages for:', contactId, Date.now())
     try {
       const response = await api.sms.getConversationMessages(contactId, { limit: 100 })
+      console.log('✅ Messages API response received:', Date.now())
       
       if (response.error) {
         throw new Error(response.error)
@@ -123,6 +130,8 @@ export default function MessengerPage() {
         status: msg.status,
       }))
 
+      console.log('🎨 Messages mapped, updating state:', Date.now())
+
       // Update conversation with loaded messages
       setConversations(prev => prev.map(conv => {
         if (conv.contactId === contactId) {
@@ -132,9 +141,14 @@ export default function MessengerPage() {
       }))
 
       // Update selected conversation
-      if (selectedConversation?.contactId === contactId) {
-        setSelectedConversation(prev => prev ? { ...prev, messages, messagesLoaded: true } : null)
-      }
+      setSelectedConversation(prev => {
+        if (prev?.contactId === contactId) {
+          return { ...prev, messages, messagesLoaded: true }
+        }
+        return prev
+      })
+      
+      console.log('✨ State updated, should render now:', Date.now())
     } catch (error: any) {
       console.error('Failed to load messages:', error)
       setAlertModal({
@@ -144,7 +158,7 @@ export default function MessengerPage() {
         type: 'error'
       })
     }
-  }
+  }, []) // No dependencies - all updates are done via setState callbacks
 
   const handleSelectConversation = async (conv: Conversation) => {
     setSelectedConversation(conv)
@@ -315,15 +329,6 @@ export default function MessengerPage() {
       title: 'Info',
       type: 'info'
     })
-  }
-
-  // Prevent hydration mismatch by not rendering until mounted
-  if (!mounted) {
-    return (
-      <div className="flex h-[calc(100vh-73px)] items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
-      </div>
-    )
   }
 
   return (
