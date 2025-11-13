@@ -104,37 +104,16 @@ CREATE POLICY "Service role can insert members"
   FOR INSERT
   WITH CHECK (true);
 
--- Trigger to automatically create organization on user signup
-CREATE OR REPLACE FUNCTION create_user_organization()
-RETURNS TRIGGER AS $$
-DECLARE
-  new_org_id UUID;
-  user_name TEXT;
-BEGIN
-  -- Get user's name for org name
-  user_name := COALESCE(NEW.raw_user_meta_data->>'full_name', 'My Organization');
-  
-  -- Create organization
-  INSERT INTO organizations (name, email)
-  VALUES (user_name || '''s Organization', NEW.email)
-  RETURNING id INTO new_org_id;
-  
-  -- Add user as owner
-  INSERT INTO organization_members (org_id, user_id, role)
-  VALUES (new_org_id, NEW.id, 'owner');
-  
-  RETURN NEW;
-EXCEPTION
-  WHEN OTHERS THEN
-    RAISE WARNING 'Error creating organization for user %: %', NEW.id, SQLERRM;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER on_auth_user_created_org
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION create_user_organization();
+-- ============================================================================
+-- AUTO-ORG CREATION DISABLED
+-- ============================================================================
+-- Users must now choose to CREATE or JOIN an org via the onboarding flow
+-- Trigger removed to prevent automatic org creation on signup
+-- 
+-- To remove existing trigger/function, run this migration:
+-- DROP TRIGGER IF EXISTS on_auth_user_created_org ON auth.users;
+-- DROP FUNCTION IF EXISTS create_user_organization();
+-- ============================================================================
 
 -- Trigger to update updated_at timestamp
 CREATE TRIGGER update_organizations_updated_at
