@@ -4,45 +4,73 @@ import { useState, useEffect } from 'react'
 import { FaSync } from 'react-icons/fa'
 import { MdMessage, MdPhone, MdTextsms, MdCampaign, MdContacts } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
+import { api } from '@/lib/api-client'
 
 export default function DashboardPage() {
-  const [timeRange, setTimeRange] = useState('30days')
+  const [timeRange, setTimeRange] = useState<'7days' | '30days' | '90days' | '1year'>('30days')
   const [stats, setStats] = useState({
     smsOutbound: 0,
     smsInbound: 0,
-    voiceOutbound: 0
+    smsFailed: 0,
+    totalCost: 0
   })
+  const [dailyData, setDailyData] = useState<Array<{
+    date: string
+    outbound: number
+    inbound: number
+    failed: number
+  }>>([])
+  const [loading, setLoading] = useState(true)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
     type: 'info'
   })
 
-  // Mock data for the chart
-  const dates = ['Oct 11', 'Oct 14', 'Oct 17', 'Oct 20', 'Oct 23', 'Oct 26', 'Oct 29', 'Nov 1', 'Nov 4', 'Nov 7']
-
-  // Simulate data loading
+  // Load stats when component mounts or timeRange changes
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // For demo: randomly generate some activity
-      if (Math.random() > 0.7) {
-        setStats({
-          smsOutbound: Math.floor(Math.random() * 100),
-          smsInbound: Math.floor(Math.random() * 50),
-          voiceOutbound: Math.floor(Math.random() * 20)
-        })
-      }
-    }, 1000)
-    return () => clearTimeout(timer)
+    loadStats()
   }, [timeRange])
 
-  const handleRefresh = () => {
-    setStats({
-      smsOutbound: Math.floor(Math.random() * 100),
-      smsInbound: Math.floor(Math.random() * 50),
-      voiceOutbound: Math.floor(Math.random() * 20)
-    })
+  const loadStats = async () => {
+    setLoading(true)
+    try {
+      const response = await api.dashboard.getStats(timeRange)
+      
+      if (response.error) {
+        throw new Error(response.error)
+      }
+
+      setStats(response.data.summary)
+      setDailyData(response.data.daily)
+    } catch (error: any) {
+      console.error('Failed to load stats:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to load statistics',
+        title: 'Error',
+        type: 'error'
+      })
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const handleRefresh = () => {
+    loadStats()
+  }
+
+  // Format dates for chart
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  // Get max value for chart scaling (total messages per day)
+  const maxValue = Math.max(
+    ...dailyData.map(d => d.outbound + d.inbound + d.failed),
+    1
+  )
 
   return (
     <div className="p-4 md:p-8">
@@ -105,8 +133,12 @@ export default function DashboardPage() {
                 <span className="text-sm text-gray-600">Outbound</span>
               </div>
               <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-blue-200 rounded"></div>
-                <span className="text-sm text-gray-600">Bounced</span>
+                <div className="w-3 h-3 bg-green-500 rounded"></div>
+                <span className="text-sm text-gray-600">Inbound</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-red-500 rounded"></div>
+                <span className="text-sm text-gray-600">Failed</span>
               </div>
             </div>
             <button 
@@ -125,36 +157,85 @@ export default function DashboardPage() {
           {/* Simple chart visualization */}
           <div className="relative h-64">
             <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between text-xs text-gray-400 w-8">
-              <span>{Math.max(...Object.values(stats))}</span>
-              <span>{Math.floor(Math.max(...Object.values(stats)) / 2)}</span>
+              <span>{maxValue}</span>
+              <span>{Math.floor(maxValue / 2)}</span>
               <span>0</span>
             </div>
             <div className="ml-8 h-full border-b border-l border-gray-200">
               {/* Chart bars */}
-              <div className="h-full flex items-end justify-between px-4 gap-2">
-                {dates.map((date, i) => {
-                  const height = Math.random() * 100 // Random height for demo
-                  return (
-                    <div key={i} className="flex flex-col items-center flex-1 group">
-                      <div 
-                        className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-colors cursor-pointer relative"
-                        style={{ height: `${height}%`, minHeight: '2px' }}
-                        title={`${date}: ${Math.floor(height)} messages`}
-                      >
-                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                          {Math.floor(height)} msgs
+              {loading ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-gray-400">Loading chart data...</p>
+                </div>
+              ) : dailyData.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-gray-400">No data available for this period</p>
+                </div>
+              ) : (
+                <div className="h-full flex items-end justify-between px-4 gap-2">
+                  {dailyData.map((day, i) => {
+                    const totalMessages = day.outbound + day.inbound + day.failed
+                    const totalHeight = maxValue > 0 ? (totalMessages / maxValue) * 100 : 0
+                    
+                    return (
+                      <div key={i} className="flex flex-col items-center flex-1 group relative" style={{ height: '100%' }}>
+                        <div className="w-full flex-1 flex items-end">
+                          <div 
+                            className="w-full relative cursor-pointer flex flex-col-reverse"
+                            style={{ height: `${totalHeight}%`, minHeight: totalHeight > 0 ? '4px' : '0' }}
+                            title={`${formatDate(day.date)}: ${day.outbound} outbound, ${day.inbound} inbound${day.failed > 0 ? `, ${day.failed} failed` : ''}`}
+                          >
+                            {/* Stacked bars */}
+                            {day.outbound > 0 && (
+                              <div 
+                                className="bg-blue-500 hover:bg-blue-600 transition-colors w-full"
+                                style={{ 
+                                  flex: day.outbound,
+                                  minHeight: '2px'
+                                }}
+                              />
+                            )}
+                            {day.inbound > 0 && (
+                              <div 
+                                className="bg-green-500 hover:bg-green-600 transition-colors w-full"
+                                style={{ 
+                                  flex: day.inbound,
+                                  minHeight: '2px'
+                                }}
+                              />
+                            )}
+                            {day.failed > 0 && (
+                              <div 
+                                className="bg-red-500 hover:bg-red-600 transition-colors rounded-t w-full"
+                                style={{ 
+                                  flex: day.failed,
+                                  minHeight: '2px'
+                                }}
+                              />
+                            )}
+                            
+                            {/* Tooltip */}
+                            <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                              <div>{formatDate(day.date)}</div>
+                              <div>Out: {day.outbound}</div>
+                              <div>In: {day.inbound}</div>
+                              {day.failed > 0 && <div className="text-red-300">Failed: {day.failed}</div>}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            {!loading && dailyData.length > 0 && (
+              <div className="ml-8 mt-2 flex justify-between text-xs text-gray-500">
+                {dailyData.map((day, i) => (
+                  <span key={i} className="flex-1 text-center">{formatDate(day.date)}</span>
+                ))}
               </div>
-            </div>
-            <div className="ml-8 mt-2 flex justify-between text-xs text-gray-500">
-              {dates.map((date, i) => (
-                <span key={i} className="flex-1 text-center">{date}</span>
-              ))}
-            </div>
+            )}
           </div>
 
           {/* Y-axis label */}

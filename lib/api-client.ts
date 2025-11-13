@@ -451,6 +451,19 @@ class ApiClient {
   };
 
   // ============================================
+  // DASHBOARD API
+  // ============================================
+
+  dashboard = {
+    /**
+     * Get dashboard statistics
+     */
+    getStats: async (timeRange: '7days' | '30days' | '90days' | '1year' = '30days') => {
+      return this.get(`/api/dashboard/stats?timeRange=${timeRange}`);
+    },
+  };
+
+  // ============================================
   // TEMPLATES API
   // ============================================
 
