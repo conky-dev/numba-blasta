@@ -42,12 +42,26 @@ export async function POST(
     const contact = contactResult.rows[0];
 
     // Queue the SMS
+    const queueStartTime = Date.now();
+    console.log(`[${new Date().toISOString()}] [REPLY] Queuing reply to ${contact.phone}:`, {
+      contactId,
+      messageLength: message.trim().length,
+      messagePreview: message.trim().substring(0, 50)
+    });
+
     const job = await queueSMS({
       to: contact.phone,
       message: message.trim(),
       orgId,
       userId,
       contactId,
+    });
+
+    const queueTime = Date.now() - queueStartTime;
+    console.log(`[${new Date().toISOString()}] [REPLY] Reply queued successfully (${queueTime}ms):`, {
+      jobId: job.id,
+      contactId,
+      contactPhone: contact.phone
     });
 
     return NextResponse.json({

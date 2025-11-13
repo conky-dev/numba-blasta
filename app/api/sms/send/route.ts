@@ -129,7 +129,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Queue the SMS job (don't send directly)
-    console.log('[SMS] Queuing message:', {
+    const queueStartTime = Date.now();
+    console.log(`[${new Date().toISOString()}] [SMS] Queuing message:`, {
       to,
       segments,
       costCents,
@@ -146,7 +147,8 @@ export async function POST(request: NextRequest) {
       variables: variables || {},
     });
 
-    console.log('[SMS] Message queued successfully:', {
+    const queueTime = Date.now() - queueStartTime;
+    console.log(`[${new Date().toISOString()}] [SMS] Message queued successfully (${queueTime}ms):`, {
       jobId: job.id,
       to,
       segments,
