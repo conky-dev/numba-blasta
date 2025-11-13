@@ -205,6 +205,13 @@ class ApiClient {
     send: async (id: string) => {
       return this.post(`/api/campaigns/${id}/send`);
     },
+
+    /**
+     * Cancel a scheduled campaign
+     */
+    cancel: async (id: string) => {
+      return this.post(`/api/campaigns/${id}/cancel`);
+    },
   };
 
   // ============================================
@@ -294,6 +301,13 @@ class ApiClient {
       }
 
       return { data, success: true };
+    },
+
+    /**
+     * Get categories with contact counts
+     */
+    getCategoriesWithCounts: async () => {
+      return this.get('/api/contacts/categories');
     },
   };
 

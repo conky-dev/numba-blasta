@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         c.template_id,
         t.name as template_name,
         c.list_id,
+        c.target_categories,
         c.status,
         c.schedule_at,
         c.started_at,
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const auth = await authenticateRequest(request);
-    const { name, message, templateId, listId, scheduleAt } = await request.json();
+    const { name, message, templateId, listId, scheduleAt, targetCategories } = await request.json();
 
     // Validation
     if (!name) {
@@ -167,13 +168,13 @@ export async function POST(request: NextRequest) {
     // Create campaign
     const result = await query(
       `INSERT INTO sms_campaigns (
-        org_id, name, message, template_id, list_id, status, schedule_at, created_by
+        org_id, name, message, template_id, list_id, target_categories, status, schedule_at, created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING 
-        id, name, message, template_id, list_id, status, 
+        id, name, message, template_id, list_id, target_categories, status, 
         schedule_at, created_at, updated_at`,
-      [auth.orgId, name, message || null, templateId || null, listId || null, status, scheduleAt || null, auth.userId]
+      [auth.orgId, name, message || null, templateId || null, listId || null, targetCategories || null, status, scheduleAt || null, auth.userId]
     );
 
     const campaign = result.rows[0];

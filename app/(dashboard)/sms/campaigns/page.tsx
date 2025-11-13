@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MdEdit, MdDelete, MdContentCopy, MdPlayArrow, MdPause, MdSend } from 'react-icons/md'
+import { MdEdit, MdDelete, MdContentCopy, MdPlayArrow, MdPause, MdSend, MdSchedule, MdCancel } from 'react-icons/md'
 import CreateCampaignModal from '@/components/modals/CreateCampaignModal'
 import EditCampaignModal from '@/components/modals/EditCampaignModal'
+import ScheduleCampaignModal from '@/components/modals/ScheduleCampaignModal'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import { api } from '@/lib/api-client'
@@ -40,7 +41,9 @@ export default function CampaignsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
+  const [schedulingCampaign, setSchedulingCampaign] = useState<{ id: string; name: string } | null>(null)
   const [sortField, setSortField] = useState<keyof Campaign>('created_at')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
@@ -248,6 +251,81 @@ export default function CampaignsPage() {
     })
   }
 
+  const handleSchedule = (id: string, name: string) => {
+    setSchedulingCampaign({ id, name })
+    setShowScheduleModal(true)
+  }
+
+  const handleScheduleConfirm = async (scheduledAt: string) => {
+    if (!schedulingCampaign) return
+
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/campaigns/${schedulingCampaign.id}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ scheduledAt })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to schedule campaign')
+      }
+
+      setAlertModal({
+        isOpen: true,
+        message: `Campaign scheduled successfully for ${new Date(scheduledAt).toLocaleString()}`,
+        title: 'Success',
+        type: 'success'
+      })
+
+      setShowScheduleModal(false)
+      setSchedulingCampaign(null)
+      await fetchCampaigns()
+    } catch (error: any) {
+      console.error('Schedule campaign error:', error)
+      throw error // Let the modal handle the error
+    }
+  }
+
+  const handleCancel = async (id: string, name: string) => {
+    setConfirmModal({
+      isOpen: true,
+      message: `Are you sure you want to cancel the scheduled campaign "${name}"? It will revert to draft status.`,
+      title: 'Cancel Campaign',
+      onConfirm: async () => {
+        try {
+          const { error } = await api.campaigns.cancel(id)
+
+          if (error) {
+            throw new Error(error)
+          }
+
+          setAlertModal({
+            isOpen: true,
+            message: 'Campaign cancelled successfully',
+            title: 'Success',
+            type: 'success'
+          })
+
+          await fetchCampaigns()
+        } catch (error: any) {
+          console.error('Cancel campaign error:', error)
+          setAlertModal({
+            isOpen: true,
+            message: error.message || 'Failed to cancel campaign',
+            title: 'Error',
+            type: 'error'
+          })
+        }
+      }
+    })
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'done': return 'bg-green-500'
@@ -383,6 +461,12 @@ export default function CampaignsPage() {
                         {campaign.template_name && (
                           <div className="text-xs text-gray-500">Template: {campaign.template_name}</div>
                         )}
+                        {campaign.status === 'scheduled' && campaign.schedule_at && (
+                          <div className="text-xs text-purple-600 flex items-center mt-1">
+                            <MdSchedule className="w-3 h-3 mr-1" />
+                            {new Date(campaign.schedule_at).toLocaleString()}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -419,7 +503,7 @@ export default function CampaignsPage() {
                           </button>
                         )}
                         
-                        {/* Send - only for draft/scheduled */}
+                        {/* Send Now - only for draft/scheduled */}
                         {['draft', 'scheduled'].includes(campaign.status) && (
                           <button
                             onClick={() => handleSend(campaign.id, campaign.name)}
@@ -427,6 +511,28 @@ export default function CampaignsPage() {
                             title="Send Now"
                           >
                             <MdSend className="w-5 h-5" />
+                          </button>
+                        )}
+                        
+                        {/* Schedule - only for draft */}
+                        {campaign.status === 'draft' && (
+                          <button
+                            onClick={() => handleSchedule(campaign.id, campaign.name)}
+                            className="text-purple-500 hover:text-purple-700"
+                            title="Schedule"
+                          >
+                            <MdSchedule className="w-5 h-5" />
+                          </button>
+                        )}
+                        
+                        {/* Cancel Schedule - only for scheduled */}
+                        {campaign.status === 'scheduled' && (
+                          <button
+                            onClick={() => handleCancel(campaign.id, campaign.name)}
+                            className="text-orange-500 hover:text-orange-700"
+                            title="Cancel Schedule"
+                          >
+                            <MdCancel className="w-5 h-5" />
                           </button>
                         )}
                         
@@ -505,6 +611,16 @@ export default function CampaignsPage() {
           await fetchCampaigns()
         }}
         campaign={editingCampaign}
+      />
+
+      <ScheduleCampaignModal
+        isOpen={showScheduleModal}
+        onClose={() => {
+          setShowScheduleModal(false)
+          setSchedulingCampaign(null)
+        }}
+        onSchedule={handleScheduleConfirm}
+        campaignName={schedulingCampaign?.name || ''}
       />
 
       <AlertModal

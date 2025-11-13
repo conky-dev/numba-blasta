@@ -71,15 +71,19 @@ connection.on('close', () => {
   console.log('[REDIS] Connection closed');
 });
 
-console.log('[WORKER] Creating BullMQ worker...');
+console.log('[WORKER] Creating BullMQ workers...');
 
-// Create worker
+// Create SMS worker
 let smsWorker: Worker<SMSJobData>;
+// Create campaign worker
+let campaignWorker: Worker;
+
 try {
+  // SMS Worker (existing)
   smsWorker = new Worker(
   'sms',
   async (job: Job<SMSJobData>) => {
-    console.log(`[WORKER] Processing job ${job.id} for ${job.data.to}`);
+    console.log(`[SMS-WORKER] Processing job ${job.id} for ${job.data.to}`);
     
     const { to, message, orgId, userId, contactId, campaignId, templateId } = job.data;
     
@@ -157,6 +161,38 @@ try {
         
         console.log(`[WORKER] Message saved with ID: ${insertResult.rows[0]?.id}`);
         
+        // If this message is part of a campaign, check if campaign is complete
+        if (campaignId) {
+          const campaignStatsResult = await query(
+            `SELECT 
+              c.id,
+              c.status,
+              COUNT(DISTINCT co.id) as total_recipients,
+              COUNT(m.id) as messages_sent
+             FROM sms_campaigns c
+             LEFT JOIN contacts co ON co.org_id = c.org_id AND co.deleted_at IS NULL AND co.opted_out_at IS NULL
+             LEFT JOIN sms_messages m ON m.campaign_id = c.id
+             WHERE c.id = $1
+             GROUP BY c.id, c.status`,
+            [campaignId]
+          );
+          
+          const stats = campaignStatsResult.rows[0];
+          
+          // If all messages have been sent, mark campaign as done
+          if (stats && stats.status === 'running' && stats.messages_sent >= stats.total_recipients) {
+            console.log(`[WORKER] 🎉 Campaign ${campaignId} complete! (${stats.messages_sent}/${stats.total_recipients})`);
+            await query(
+              `UPDATE sms_campaigns
+               SET status = 'done',
+                   completed_at = NOW(),
+                   updated_at = NOW()
+               WHERE id = $1`,
+              [campaignId]
+            );
+          }
+        }
+        
         await query('COMMIT');
         
         console.log(`[WORKER] ✅ Job ${job.id} completed successfully`);
@@ -181,27 +217,204 @@ try {
   }
 );
 
-  console.log('[WORKER] ✅ Worker created successfully');
+  console.log('[WORKER] ✅ SMS Worker created successfully');
+  
+  // Campaign Worker (new)
+  campaignWorker = new Worker(
+    'campaigns',
+    async (job: Job) => {
+      console.log(`[CAMPAIGN-WORKER] Processing campaign job ${job.id}`);
+      
+      const { campaignId, orgId, userId } = job.data;
+      
+      try {
+        // Step 1: Get campaign details
+        console.log(`[CAMPAIGN] Fetching campaign ${campaignId}`);
+        const campaignResult = await query(
+          `SELECT id, name, message, template_id, org_id, status, target_categories
+           FROM sms_campaigns
+           WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
+          [campaignId, orgId]
+        );
+        
+        if (campaignResult.rows.length === 0) {
+          throw new Error(`Campaign ${campaignId} not found`);
+        }
+        
+        const campaign = campaignResult.rows[0];
+        const targetCategories = campaign.target_categories;
+        
+        console.log(`[CAMPAIGN] Target categories:`, targetCategories || 'ALL CONTACTS');
+        
+        // Step 2: Update campaign status to 'running' if it was 'scheduled'
+        if (campaign.status === 'scheduled') {
+          await query(
+            `UPDATE sms_campaigns
+             SET status = 'running',
+                 started_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [campaignId]
+          );
+          console.log(`[CAMPAIGN] Campaign ${campaignId} status updated to 'running'`);
+        }
+        
+        // Step 3: Get contacts based on target categories
+        console.log(`[CAMPAIGN] Fetching contacts for org ${orgId}`);
+        
+        let contactsQuery;
+        let contactsParams;
+        
+        if (targetCategories && targetCategories.length > 0) {
+          // Filter by categories using array overlap operator
+          contactsQuery = `
+            SELECT id, phone, first_name, last_name, email
+            FROM contacts
+            WHERE org_id = $1 
+              AND deleted_at IS NULL 
+              AND opted_out_at IS NULL
+              AND category && $2
+            ORDER BY id
+          `;
+          contactsParams = [orgId, targetCategories];
+          console.log(`[CAMPAIGN] Filtering by categories:`, targetCategories);
+        } else {
+          // Send to all contacts
+          contactsQuery = `
+            SELECT id, phone, first_name, last_name, email
+            FROM contacts
+            WHERE org_id = $1 
+              AND deleted_at IS NULL 
+              AND opted_out_at IS NULL
+            ORDER BY id
+          `;
+          contactsParams = [orgId];
+          console.log(`[CAMPAIGN] No category filter - sending to all contacts`);
+        }
+        
+        const contactsResult = await query(contactsQuery, contactsParams);
+        
+        const contacts = contactsResult.rows;
+        console.log(`[CAMPAIGN] Found ${contacts.length} contacts`);
+        
+        if (contacts.length === 0) {
+          console.warn(`[CAMPAIGN] No contacts found for campaign ${campaignId}`);
+          await query(
+            `UPDATE sms_campaigns
+             SET status = 'done',
+                 completed_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [campaignId]
+          );
+          return { success: true, sent: 0, message: 'No contacts to send to' };
+        }
+        
+        // Step 4: Queue individual SMS jobs for each contact
+        console.log(`[CAMPAIGN] Queueing ${contacts.length} SMS jobs...`);
+        
+        // Import Queue to add jobs to SMS queue
+        const { Queue } = require('bullmq');
+        const smsQueue = new Queue('sms', { connection });
+        
+        let queuedCount = 0;
+        const batchSize = 100; // Queue in batches
+        
+        for (let i = 0; i < contacts.length; i += batchSize) {
+          const batch = contacts.slice(i, i + batchSize);
+          
+          for (const contact of batch) {
+            // Render message with contact data (simple mustache-like replacement)
+            let renderedMessage = campaign.message;
+            renderedMessage = renderedMessage.replace(/\{\{firstName\}\}/g, contact.first_name || '');
+            renderedMessage = renderedMessage.replace(/\{\{lastName\}\}/g, contact.last_name || '');
+            renderedMessage = renderedMessage.replace(/\{\{email\}\}/g, contact.email || '');
+            
+            await smsQueue.add('send-sms', {
+              to: contact.phone,
+              message: renderedMessage,
+              orgId,
+              userId,
+              contactId: contact.id,
+              campaignId,
+              templateId: campaign.template_id,
+            });
+            
+            queuedCount++;
+          }
+          
+          console.log(`[CAMPAIGN] Queued ${Math.min((i + batchSize), contacts.length)}/${contacts.length} messages`);
+          
+          // Small delay between batches to avoid overwhelming the queue
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        console.log(`[CAMPAIGN] ✅ Campaign ${campaignId} queued ${queuedCount} messages`);
+        
+        // Note: We don't update status to 'completed' here
+        // That should be done when all messages are actually sent
+        // For now, it stays in 'running' state
+        
+        return { success: true, sent: queuedCount };
+        
+      } catch (error: any) {
+        console.error(`[CAMPAIGN] ❌ Campaign ${campaignId} failed:`, error.message);
+        
+        // Update campaign status to 'failed'
+        try {
+          await query(
+            `UPDATE sms_campaigns
+             SET status = 'failed',
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [campaignId]
+          );
+        } catch (updateError: any) {
+          console.error(`[CAMPAIGN] Failed to update campaign status:`, updateError.message);
+        }
+        
+        throw error;
+      }
+    },
+    {
+      connection,
+      concurrency: 2, // Process 2 campaigns at a time
+    }
+  );
+
+  console.log('[WORKER] ✅ Campaign Worker created successfully');
 } catch (error: any) {
-  console.error('[WORKER] ❌ FATAL: Failed to create worker:', error);
+  console.error('[WORKER] ❌ FATAL: Failed to create workers:', error);
   console.error('[WORKER] Error stack:', error.stack);
   process.exit(1);
 }
 
 // Worker event listeners
 smsWorker.on('completed', (job) => {
-  console.log(`[WORKER] Job ${job.id} completed`);
+  console.log(`[SMS-WORKER] Job ${job.id} completed`);
 });
 
 smsWorker.on('failed', (job, error) => {
-  console.error(`[WORKER] Job ${job?.id} failed:`, error.message);
+  console.error(`[SMS-WORKER] Job ${job?.id} failed:`, error.message);
 });
 
 smsWorker.on('error', (error) => {
-  console.error('[WORKER] Worker error:', error);
+  console.error('[SMS-WORKER] Worker error:', error);
 });
 
-console.log('[WORKER] SMS Worker started, waiting for jobs...');
+campaignWorker.on('completed', (job) => {
+  console.log(`[CAMPAIGN-WORKER] Job ${job.id} completed`);
+});
+
+campaignWorker.on('failed', (job, error) => {
+  console.error(`[CAMPAIGN-WORKER] Job ${job?.id} failed:`, error.message);
+});
+
+campaignWorker.on('error', (error) => {
+  console.error('[CAMPAIGN-WORKER] Worker error:', error);
+});
+
+console.log('[WORKER] All workers started, waiting for jobs...');
 
 // Keep process alive with setInterval
 setInterval(() => {
@@ -221,6 +434,7 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('SIGTERM', async () => {
   console.log('[WORKER] Shutting down...');
   await smsWorker.close();
+  await campaignWorker.close();
   await connection.quit();
   await dbPool.end();
   process.exit(0);
@@ -229,6 +443,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('[WORKER] Shutting down...');
   await smsWorker.close();
+  await campaignWorker.close();
   await connection.quit();
   await dbPool.end();
   process.exit(0);
