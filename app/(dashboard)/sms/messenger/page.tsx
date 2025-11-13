@@ -56,7 +56,7 @@ export default function MessengerPage() {
 
   // Scroll when selected conversation messages change
   useEffect(() => {
-    if (selectedConversation?.messages?.length > 0) {
+    if (selectedConversation && selectedConversation.messages && selectedConversation.messages.length > 0) {
       setTimeout(scrollToBottom, 100) // Small delay to ensure DOM is updated
     }
   }, [selectedConversation?.messages, scrollToBottom])

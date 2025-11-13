@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    // Get conversations with last message info (properly optimized)
+    // Get conversations ordered by most recent INBOUND message first
     const result = await query(
       `SELECT 
         c.id as contact_id,
@@ -61,14 +61,23 @@ export async function GET(request: NextRequest) {
           WHERE contact_id = c.id AND org_id = $1 
           ORDER BY created_at DESC 
           LIMIT 1
-        ) as last_message_direction
+        ) as last_message_direction,
+        (
+          SELECT created_at 
+          FROM sms_messages 
+          WHERE contact_id = c.id AND org_id = $1 AND direction = 'inbound'
+          ORDER BY created_at DESC 
+          LIMIT 1
+        ) as last_inbound_at
       FROM contacts c
       ${whereClause}
       AND EXISTS (
         SELECT 1 FROM sms_messages 
         WHERE contact_id = c.id AND org_id = $1
       )
-      ORDER BY last_message_at DESC NULLS LAST
+      ORDER BY 
+        last_inbound_at DESC NULLS LAST,
+        last_message_at DESC NULLS LAST
       LIMIT $${paramIndex}`,
       [...queryParams, validLimit]
     );
