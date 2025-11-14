@@ -121,16 +121,23 @@ try {
         console.log(`[WORKER] 📤 Sending SMS to ${to} via Twilio`);
         
         try {
-          // 🧪 TESTING: Hardcoded TO number for safe testing
-          const testTo = '+18777804236';
-          
-          console.log(`[WORKER] 🧪 TEST MODE: Overriding recipient`);
-          console.log(`[WORKER] Original: To ${to}`);
-          console.log(`[WORKER] Testing:  To ${testTo}`);
+          // 🧪 TESTING (DISABLED):
+          // If you ever need to force all outbound traffic to a single safe test number again,
+          // you can temporarily uncomment this block. Do NOT use in production.
+          //
+          // const testTo = '+18777804236';
+          // console.log(`[WORKER] 🧪 TEST MODE: Overriding recipient`);
+          // console.log(`[WORKER] Original: To ${to}`);
+          // console.log(`[WORKER] Testing:  To ${testTo}`);
+          //
+          // const effectiveTo = testTo;
+          //
+          // For production, always send to the actual recipient:
+          const effectiveTo = to;
           
           const twilioMessage = await twilioClient.messages.create({
             body: message,
-            to: testTo,  // Hardcoded test TO number
+            to: effectiveTo,
             messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
           });
           
