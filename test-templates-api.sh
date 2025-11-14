@@ -33,7 +33,7 @@ echo ""
 echo "✨ Test 2: Create a new template"
 TEMPLATE_DATA='{
   "name": "Welcome Message",
-  "content": "Hi {{firstName}}, welcome to {{companyName}}! Reply STOP to unsubscribe."
+  "content": "Hi {{firstName}}, welcome to {{companyName}}!"
 }'
 
 CREATE_RESPONSE=$(curl -s -X POST "$API_URL" \

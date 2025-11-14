@@ -112,7 +112,40 @@ try {
         throw new Error(`Insufficient balance: $${balance} (need $${cost})`);
       }
       
-      // Step 2: Send SMS via Twilio (or simulate if not configured)
+      // Step 2: Decide message body (append STOP text on first send to contact)
+      let finalMessage = message;
+
+      if (contactId) {
+        try {
+          // Atomically mark that we've sent the opt-out notice if this is the first time.
+          // Only the first concurrent update will get a row back.
+          const noticeResult = await query(
+            `UPDATE contacts
+             SET opt_out_notice_sent_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1
+               AND opt_out_notice_sent_at IS NULL
+             RETURNING opt_out_notice_sent_at`,
+            [contactId]
+          );
+
+          const isFirstOutbound = noticeResult.rows.length > 0;
+
+          if (isFirstOutbound && !/stop to unsubscribe/i.test(message)) {
+            finalMessage = `${message.trim()}\nReply STOP to unsubscribe.`;
+            console.log(
+              `[WORKER] Appended STOP verbiage for first outbound to contact ${contactId}`
+            );
+          }
+        } catch (checkError: any) {
+          console.warn(
+            '[WORKER] Failed to check first-outbound status; sending original message:',
+            checkError?.message || checkError
+          );
+        }
+      }
+
+      // Step 3: Send SMS via Twilio (or simulate if not configured)
       let twilioSid: string | null = null;
       let twilioStatus: string = 'sent';
       
@@ -136,7 +169,7 @@ try {
           const effectiveTo = to;
           
           const twilioMessage = await twilioClient.messages.create({
-            body: message,
+            body: finalMessage,
             to: effectiveTo,
             messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
           });
@@ -157,12 +190,12 @@ try {
       } else {
         // Simulation mode (for testing without Twilio)
         console.log(`[WORKER] 🔧 SIMULATION MODE: Would send to ${to}`);
-        console.log(`[WORKER] Message: ${message.substring(0, 50)}...`);
+        console.log(`[WORKER] Message: ${finalMessage.substring(0, 50)}...`);
         await new Promise(resolve => setTimeout(resolve, 100)); // Simulate delay
         twilioSid = `SIM${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
       }
       
-      // Step 3: Deduct balance and save message
+      // Step 4: Deduct balance and save message
       await query('BEGIN');
       
       try {
@@ -186,8 +219,8 @@ try {
         console.log(`[WORKER] Saving message to database:`, {
           orgId,
           to,
-          messageLength: message.length,
-          messagePreview: message.substring(0, 20)
+          messageLength: finalMessage.length,
+          messagePreview: finalMessage.substring(0, 20)
         });
         
         const insertResult = await query(
@@ -203,7 +236,7 @@ try {
             orgId,
             contactId || null,
             to,
-            message,
+            finalMessage,
             'outbound',
             twilioStatus, // Use Twilio status or 'sent'
             1, // Calculate segments later

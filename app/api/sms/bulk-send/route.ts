@@ -61,12 +61,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Append standard STOP verbiage to comply with SMS opt-out rules
-    const OPT_OUT_TEXT = ' Reply STOP to unsubscribe.';
-    if (!/stop to unsubscribe/i.test(messageBody)) {
-      messageBody = `${messageBody.trim()}${OPT_OUT_TEXT}`;
-    }
-
     // Get all contacts in the org that haven't opted out (limit to 10k at a time)
     const BATCH_SIZE = 10000;
     
