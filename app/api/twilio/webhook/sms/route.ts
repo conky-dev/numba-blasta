@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import twilio from 'twilio';
 import { query } from '@/app/api/_lib/db';
 
 /**
@@ -9,13 +10,64 @@ import { query } from '@/app/api/_lib/db';
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    
-    // Extract Twilio webhook parameters
+
+    // -----------------------------------------------------------------------
+    // Twilio webhook signature verification
+    // -----------------------------------------------------------------------
+    const signature = request.headers.get('x-twilio-signature');
+    const webhookToken = process.env.TWILIO_AUTH_TOKEN;
+
+    if (!webhookToken) {
+      console.error(
+        '[Twilio Webhook] ❌ No TWILIO_WEBHOOK_AUTH_TOKEN or TWILIO_AUTH_TOKEN configured – cannot verify webhook signature.'
+      );
+      return new NextResponse('Server misconfigured', { status: 500 });
+    }
+
+    if (!signature) {
+      console.error('[Twilio Webhook] ❌ Missing X-Twilio-Signature header');
+      return new NextResponse('Invalid signature', { status: 403 });
+    }
+
+    // Build params object from formData
+    const params: Record<string, string> = {};
+    formData.forEach((value, key) => {
+      if (typeof value === 'string') {
+        params[key] = value;
+      }
+    });
+
+    const url = new URL(request.url);
+    // Use the same URL you configured in Twilio console (usually without query)
+    const fullUrl = `${url.origin}${url.pathname}`;
+
+    const isValid = twilio.validateRequest(
+      webhookToken,
+      signature,
+      fullUrl,
+      params
+    );
+
+    if (!isValid) {
+      console.error('[Twilio Webhook] ❌ Signature validation failed', {
+        fullUrl,
+        params,
+      });
+      // Return 403 so we can notice misconfig; Twilio will retry until fixed.
+      return new NextResponse('Invalid signature', { status: 403 });
+    }
+
+    // -----------------------------------------------------------------------
+    // Extract Twilio webhook parameters (now trusted)
+    // -----------------------------------------------------------------------
     const messageSid = formData.get('MessageSid') as string;
     const from = formData.get('From') as string; // Contact's phone number
     const to = formData.get('To') as string; // Your Twilio number
     const body = formData.get('Body') as string;
-    const numSegments = parseInt(formData.get('NumSegments') as string || '1');
+    const numSegments = parseInt(
+      ((formData.get('NumSegments') as string) || '1') as string,
+      10
+    );
     
     console.log('📨 Twilio webhook received:', { messageSid, from, to, body });
 
