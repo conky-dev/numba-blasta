@@ -99,32 +99,48 @@ try {
     const { to, message, orgId, userId, contactId, campaignId, templateId } = job.data;
     
     try {
-      // Step 1: Check balance
-      const balanceCheck = await query(
-        'SELECT sms_balance FROM organizations WHERE id = $1',
+      // Step 1: Get org SMS provider settings and check balance
+      const orgResult = await query(
+        `SELECT sms_balance, 
+                twilio_account_sid, 
+                twilio_auth_token,
+                twilio_messaging_service_sid
+         FROM organizations WHERE id = $1`,
         [orgId]
       );
       
-      const balance = parseFloat(balanceCheck.rows[0]?.sms_balance || '0');
+      if (orgResult.rows.length === 0) {
+        throw new Error(`Organization ${orgId} not found`);
+      }
+      
+      const org = orgResult.rows[0];
+      const balance = parseFloat(org.sms_balance || '0');
       const cost = 0.01; // $0.01 per message
       
       if (balance < cost) {
         throw new Error(`Insufficient balance: $${balance} (need $${cost})`);
       }
       
+      // Use org-specific SMS provider credentials if available, otherwise fall back to platform credentials
+      const useTwilioClient = org.twilio_account_sid && org.twilio_auth_token
+        ? twilio(org.twilio_account_sid, org.twilio_auth_token)
+        : twilioClient;
+      
+      const useMessagingServiceSid = org.twilio_messaging_service_sid || process.env.TWILIO_MESSAGING_SERVICE_SID;
+      
       // Step 2: Send SMS via Twilio (or simulate if not configured)
       let twilioSid: string | null = null;
       let twilioStatus: string = 'sent';
       
-      if (twilioClient && process.env.TWILIO_MESSAGING_SERVICE_SID) {
+      if (useTwilioClient && useMessagingServiceSid) {
         // Real Twilio send
         console.log(`[WORKER] 📤 Sending SMS to ${to} via Twilio`);
         
         try {
-          const twilioMessage = await twilioClient.messages.create({
+          const twilioMessage = await useTwilioClient.messages.create({
             body: message,
             to: to,
-            messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+            messagingServiceSid: useMessagingServiceSid,
           });
           
           twilioSid = twilioMessage.sid;

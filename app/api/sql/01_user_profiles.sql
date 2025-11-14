@@ -6,10 +6,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   full_name TEXT,
   phone_number TEXT,
   
-  -- SMS & Twilio Integration
-  sms_balance DECIMAL(10,2) DEFAULT 0.00,
-  twilio_subaccount_sid TEXT,
-  twilio_subaccount_auth_token TEXT,
+  -- Note: SMS & Twilio Integration moved to organizations table (org-level, not user-level)
   
   -- Timestamps
   created_at TIMESTAMPTZ DEFAULT NOW(),

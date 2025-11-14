@@ -35,6 +35,7 @@ const menuItems = [
     icon: MdSettings,
     submenu: [
       { name: 'Team', href: '/settings/team' },
+      { name: 'SMS Provider', href: '/settings/sms-provider' },
     ]
   },
 ]

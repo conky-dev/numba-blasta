@@ -14,9 +14,11 @@ CREATE TABLE IF NOT EXISTS organizations (
   balance_cents INTEGER DEFAULT 0 NOT NULL,
   currency TEXT DEFAULT 'USD',
   
-  -- Twilio integration (org-level, not user-level)
-  twilio_subaccount_sid TEXT,
-  twilio_subaccount_auth_token TEXT, -- Should be encrypted in production
+  -- SMS Provider integration (org-level, not user-level)
+  twilio_account_sid TEXT,
+  twilio_auth_token TEXT, -- Should be encrypted in production
+  twilio_messaging_service_sid TEXT,
+  account_type TEXT DEFAULT 'byoa' CHECK (account_type IN ('byoa', 'managed', 'platform')),
   
   -- Timestamps
   created_at TIMESTAMPTZ DEFAULT NOW(),
