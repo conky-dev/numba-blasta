@@ -34,6 +34,9 @@ export default function QuickSMSPage() {
   const [showEmojiModal, setShowEmojiModal] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [sending, setSending] = useState(false)
+  const [senderInfo, setSenderInfo] = useState<{ hasNumber: boolean; number: string | null; status: string } | null>(null)
+  const [loadingSender, setLoadingSender] = useState(true)
+  const [provisioningSender, setProvisioningSender] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -74,11 +77,60 @@ export default function QuickSMSPage() {
     loadCategories()
   }, [])
 
+  // Load org sender info (toll-free / SMS number)
+  useEffect(() => {
+    const loadSender = async () => {
+      setLoadingSender(true)
+      try {
+        const response = await fetch('/api/organizations/sender', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setSenderInfo({
+            hasNumber: !!data.number,
+            number: data.number || null,
+            status: data.status || 'none'
+          })
+        } else {
+          setSenderInfo({
+            hasNumber: false,
+            number: null,
+            status: 'none'
+          })
+        }
+      } catch (error) {
+        console.error('Failed to load sender info:', error)
+        setSenderInfo({
+          hasNumber: false,
+          number: null,
+          status: 'none'
+        })
+      } finally {
+        setLoadingSender(false)
+      }
+    }
+
+    loadSender()
+  }, [])
+
   // Calculate SMS segments (160 chars per segment)
   const charCount = message?.length || 0
   const smsCount = Math.ceil(charCount / 160) || 1
 
   const handlePreview = () => {
+    if (!senderInfo?.hasNumber) {
+      setAlertModal({
+        isOpen: true,
+        message: 'You need an SMS number before you can send messages. Click “Create SMS Number” at the top of this page.',
+        title: 'No SMS Number',
+        type: 'error'
+      })
+      return
+    }
     if (!message) {
       setAlertModal({
         isOpen: true,
@@ -93,6 +145,16 @@ export default function QuickSMSPage() {
   }
 
   const handleSend = async () => {
+    if (!senderInfo?.hasNumber) {
+      setAlertModal({
+        isOpen: true,
+        message: 'You need an SMS number before you can send messages. Click “Create SMS Number” at the top of this page.',
+        title: 'No SMS Number',
+        type: 'error'
+      })
+      return
+    }
+
     setShowPreview(false)
     setSending(true)
 
@@ -218,9 +280,94 @@ export default function QuickSMSPage() {
     setSelectedTemplate(template)
   }
 
+  const handleCreateSenderNumber = async () => {
+    setProvisioningSender(true)
+    try {
+      const response = await fetch('/api/organizations/sender', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        setAlertModal({
+          isOpen: true,
+          message: data.error || 'Failed to create SMS number. Please try again.',
+          title: 'Provisioning Failed',
+          type: 'error'
+        })
+        return
+      }
+
+      setSenderInfo({
+        hasNumber: true,
+        number: data.number || null,
+        status: data.status || 'awaiting_verification'
+      })
+
+      setAlertModal({
+        isOpen: true,
+        message: `We provisioned a toll-free SMS number for your account: ${data.number}.\n\nStatus: ${data.status}. You can start configuring and testing now.`,
+        title: 'SMS Number Created',
+        type: 'success'
+      })
+    } catch (error: any) {
+      console.error('Failed to provision sender number:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to create SMS number. Please try again.',
+        title: 'Provisioning Failed',
+        type: 'error'
+      })
+    } finally {
+      setProvisioningSender(false)
+    }
+  }
+
   return (
     <div className="p-4 md:p-8">
       <h1 className="text-xl md:text-2xl font-semibold text-gray-800 mb-6">Quick SMS</h1>
+
+      {/* Sender number status / provisioning */}
+      <div className="mb-6">
+        {loadingSender ? (
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-600">
+            Checking your SMS number...
+          </div>
+        ) : senderInfo?.hasNumber ? (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <p className="font-medium">
+                SMS Number: <span className="font-semibold">{senderInfo.number}</span>
+              </p>
+              <p className="text-xs mt-1">
+                Status: {senderInfo.status === 'awaiting_verification' ? 'Awaiting verification' : senderInfo.status}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-900 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <p className="font-medium">You don&apos;t have an SMS number yet.</p>
+              <p className="text-xs mt-1">
+                Create a dedicated toll-free number so you can start sending messages to your contacts.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateSenderNumber}
+              disabled={provisioningSender}
+              className="inline-flex items-center justify-center px-4 py-2 rounded-md border border-yellow-400 bg-yellow-100 text-yellow-900 text-sm font-medium hover:bg-yellow-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {provisioningSender ? 'Creating...' : 'Create SMS Number'}
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col lg:flex-row space-y-6 lg:space-y-0 lg:space-x-6">
         {/* Form */}
