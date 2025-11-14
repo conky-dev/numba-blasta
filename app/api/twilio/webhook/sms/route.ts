@@ -118,6 +118,16 @@ export async function POST(request: NextRequest) {
          WHERE id = $1`,
         [contactId]
       );
+
+      // Refresh materialized view so category counts (Quick SMS) reflect opt-out
+      try {
+        await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
+      } catch (refreshError: any) {
+        console.warn(
+          '[Twilio Webhook] Failed to refresh contact_category_counts after STOP:',
+          refreshError?.message || refreshError
+        );
+      }
     }
 
     // Insert the inbound message into the database
