@@ -12,10 +12,19 @@ export async function POST(
   { params }: { params: Promise<{ contactId: string }> }
 ) {
   try {
-    const { userId, orgId } = await authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
+    const { userId, orgId } = authResult;
     const { contactId } = await params;
     const body = await request.json();
     const { message } = body;
+    
+    // Ensure orgId is present
+    if (!orgId) {
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 400 }
+      );
+    }
 
     if (!message || message.trim().length === 0) {
       return NextResponse.json(
