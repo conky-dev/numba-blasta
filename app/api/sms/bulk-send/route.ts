@@ -8,7 +8,16 @@ import { queueSMS } from '@/lib/sms-queue';
 export async function POST(request: NextRequest) {
   try {
     // Authenticate and get user/org info
-    const { userId, orgId } = await authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
+    const { userId, orgId } = authResult;
+    
+    // Ensure orgId is present
+    if (!orgId) {
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 400 }
+      );
+    }
 
     // Parse request body
     const body = await request.json();

@@ -147,6 +147,7 @@ class ApiClient {
       templateId?: string;
       listId?: string;
       scheduleAt?: string;
+      targetCategories?: string[] | null;
     }) => {
       return this.post('/api/campaigns', data);
     },
@@ -160,6 +161,7 @@ class ApiClient {
       templateId?: string;
       listId?: string;
       scheduleAt?: string;
+      targetCategories?: string[] | null;
     }) => {
       return this.patch(`/api/campaigns/${id}`, data);
     },
