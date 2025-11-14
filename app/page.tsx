@@ -232,7 +232,8 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* Sign Up Link */}
+          {/* Sign Up Link - DISABLED */}
+          {/* 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{' '}
@@ -245,6 +246,7 @@ export default function LoginPage() {
               </button>
             </p>
           </div>
+          */}
         </div>
 
         {/* Footer */}

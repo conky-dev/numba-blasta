@@ -4,6 +4,18 @@ import { hashPassword } from '@/lib/auth-utils';
 import { query } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
+  // ============================================================================
+  // SIGNUPS DISABLED
+  // ============================================================================
+  // Signups are currently disabled. Uncomment the code below to re-enable.
+  // ============================================================================
+  
+  return NextResponse.json(
+    { error: 'Signups are currently disabled' },
+    { status: 403 }
+  );
+
+  /* COMMENTED OUT - SIGNUP CODE
   try {
     const { email, password, fullName } = await request.json();
 
@@ -117,4 +129,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  */
 }

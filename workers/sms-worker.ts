@@ -7,11 +7,13 @@ import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { SMSJobData } from '@/lib/sms-queue';
+import twilio from 'twilio';
 
 // Startup logging
 console.log('🚀 Starting SMS Worker...');
 console.log('📦 Redis:', process.env.REDIS_URL?.split('@')[1] || 'connecting...');
 console.log('💾 Database:', process.env.DATABASE_URL?.includes('supabase') ? 'Supabase' : 'PostgreSQL');
+console.log('📱 Twilio:', process.env.TWILIO_ACCOUNT_SID ? 'Configured' : '❌ NOT CONFIGURED');
 console.log('🌍 Environment:', process.env.RAILWAY_ENVIRONMENT || 'local');
 console.log('🔢 Node version:', process.version);
 console.log('');
@@ -26,6 +28,15 @@ if (!process.env.DATABASE_URL) {
   console.error('❌ FATAL: DATABASE_URL not set');
   process.exit(1);
 }
+
+if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+  console.error('⚠️  WARNING: Twilio credentials not set - SMS sending will be simulated');
+}
+
+// Initialize Twilio client
+const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+  : null;
 
 // Create dedicated database pool for worker with proper SSL config
 const dbPool = new Pool({
@@ -101,12 +112,48 @@ try {
         throw new Error(`Insufficient balance: $${balance} (need $${cost})`);
       }
       
-      // Step 2: Simulate sending (we'll add real Twilio later)
-      console.log(`[WORKER] Simulating send to ${to}`);
-      console.log(`[WORKER] Message: ${message.substring(0, 50)}...`);
+      // Step 2: Send SMS via Twilio (or simulate if not configured)
+      let twilioSid: string | null = null;
+      let twilioStatus: string = 'sent';
       
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 100));
+      if (twilioClient && process.env.TWILIO_MESSAGING_SERVICE_SID) {
+        // Real Twilio send
+        console.log(`[WORKER] 📤 Sending SMS to ${to} via Twilio`);
+        
+        try {
+          // 🧪 TESTING: Hardcoded TO number for safe testing
+          const testTo = '+18777804236';
+          
+          console.log(`[WORKER] 🧪 TEST MODE: Overriding recipient`);
+          console.log(`[WORKER] Original: To ${to}`);
+          console.log(`[WORKER] Testing:  To ${testTo}`);
+          
+          const twilioMessage = await twilioClient.messages.create({
+            body: message,
+            to: testTo,  // Hardcoded test TO number
+            messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+          });
+          
+          twilioSid = twilioMessage.sid;
+          // Map Twilio statuses to our DB statuses
+          // Twilio: queued, sending, sent, failed, delivered, undelivered, receiving, received, accepted, scheduled, canceled
+          // Our DB: queued, sent, delivered, failed, undelivered, received
+          twilioStatus = twilioMessage.status === 'accepted' || twilioMessage.status === 'sending' 
+            ? 'sent' 
+            : twilioMessage.status;
+          
+          console.log(`[WORKER] ✅ Twilio sent: ${twilioSid} (${twilioMessage.status} -> ${twilioStatus})`);
+        } catch (twilioError: any) {
+          console.error(`[WORKER] ❌ Twilio error:`, twilioError.message);
+          throw new Error(`Twilio failed: ${twilioError.message}`);
+        }
+      } else {
+        // Simulation mode (for testing without Twilio)
+        console.log(`[WORKER] 🔧 SIMULATION MODE: Would send to ${to}`);
+        console.log(`[WORKER] Message: ${message.substring(0, 50)}...`);
+        await new Promise(resolve => setTimeout(resolve, 100)); // Simulate delay
+        twilioSid = `SIM${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
+      }
       
       // Step 3: Deduct balance and save message
       await query('BEGIN');
@@ -141,8 +188,9 @@ try {
             org_id, contact_id, to_number, body,
             direction, status, segments, price_cents,
             campaign_id, template_id, created_by,
+            provider_sid, provider_status,
             sent_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
           RETURNING id`,
           [
             orgId,
@@ -150,12 +198,14 @@ try {
             to,
             message,
             'outbound',
-            'sent', // Mark as sent (will be 'delivered' later with webhooks)
+            twilioStatus, // Use Twilio status or 'sent'
             1, // Calculate segments later
             1, // Cost in cents
             campaignId || null,
             templateId || null,
             userId,
+            twilioSid, // Twilio MessageSid
+            twilioStatus, // Twilio status
           ]
         );
         
@@ -203,6 +253,18 @@ try {
         console.error(`[WORKER] ❌ Transaction error:`, error.message);
         console.error(`[WORKER] ❌ Error stack:`, error.stack);
         await query('ROLLBACK');
+        
+        // CRITICAL: If Twilio send succeeded, don't throw
+        // This prevents BullMQ from retrying and sending duplicate messages
+        if (twilioSid) {
+          console.warn(`[WORKER] ⚠️  DB save failed but Twilio send succeeded (${twilioSid})`);
+          console.warn(`[WORKER] ⚠️  Marking job as complete to prevent duplicate send`);
+          // Job completes successfully even though DB save failed
+          // The message was sent to the user, which is what matters
+          return { success: true, twilioSid, warning: 'DB save failed but SMS sent' };
+        }
+        
+        // If Twilio send failed, it's safe to retry
         throw error;
       }
       
