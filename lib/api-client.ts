@@ -248,6 +248,7 @@ class ApiClient {
       lastName?: string;
       phone: string;
       email?: string;
+      category?: string | string[];
     }) => {
       return this.post('/api/contacts', data);
     },
@@ -260,6 +261,7 @@ class ApiClient {
       lastName?: string;
       phone?: string;
       email?: string;
+      category?: string | string[];
     }) => {
       return this.patch(`/api/contacts/${id}`, data);
     },

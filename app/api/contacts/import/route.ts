@@ -154,9 +154,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Refresh materialized view for category counts
+    // Refresh materialized view for category counts after bulk import
     try {
-      await query('REFRESH MATERIALIZED VIEW contact_category_counts');
+      await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
     } catch (error) {
       console.warn('Failed to refresh category counts view:', error);
       // Non-fatal - counts will be slightly stale but still work
