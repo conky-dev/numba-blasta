@@ -17,6 +17,7 @@ interface Contact {
   last_name?: string
   phone: string
   email?: string
+  category?: string[]
   opted_out_at?: string
   created_at: string
   updated_at: string
@@ -36,13 +37,15 @@ export default function ContactsPage() {
   const [totalContacts, setTotalContacts] = useState(0)
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('Other')
+  const [newCategoryInput, setNewCategoryInput] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const itemsPerPage = 15
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     phone: '',
-    email: ''
+    email: '',
+    category: [] as string[]
   })
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
@@ -180,6 +183,7 @@ export default function ContactsPage() {
           lastName: formData.lastName || undefined,
           phone: formData.phone,
           email: formData.email || undefined,
+          category: formData.category.length > 0 ? formData.category : ['Other']
         })
 
         if (error) {
@@ -198,6 +202,7 @@ export default function ContactsPage() {
           lastName: formData.lastName || undefined,
           phone: formData.phone,
           email: formData.email || undefined,
+          category: formData.category.length > 0 ? formData.category : ['Other']
         })
 
         if (error) {
@@ -213,7 +218,7 @@ export default function ContactsPage() {
       }
 
       setShowModal(false)
-      setFormData({ firstName: '', lastName: '', phone: '', email: '' })
+      setFormData({ firstName: '', lastName: '', phone: '', email: '', category: [] })
       setEditingContact(null)
       await fetchContacts(currentPage)
     } catch (error: any) {
@@ -233,7 +238,8 @@ export default function ContactsPage() {
       firstName: contact.first_name || '',
       lastName: contact.last_name || '',
       phone: contact.phone,
-      email: contact.email || ''
+      email: contact.email || '',
+      category: contact.category || []
     })
     setShowModal(true)
   }
@@ -274,8 +280,58 @@ export default function ContactsPage() {
 
   const handleCancel = () => {
     setShowModal(false)
-    setFormData({ firstName: '', lastName: '', phone: '', email: '' })
+    setFormData({ firstName: '', lastName: '', phone: '', email: '', category: [] })
+    setNewCategoryInput('')
     setEditingContact(null)
+  }
+
+  const handleAddNewCategory = () => {
+    const trimmedCategory = newCategoryInput.trim()
+    
+    if (!trimmedCategory) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Category name cannot be empty',
+        title: 'Invalid Category',
+        type: 'error'
+      })
+      return
+    }
+
+    // Check if category already exists (case-insensitive)
+    const existingCategory = categories.find(
+      cat => cat.name.toLowerCase() === trimmedCategory.toLowerCase()
+    )
+
+    if (existingCategory) {
+      // If it exists, just select it
+      if (!formData.category.includes(existingCategory.name)) {
+        setFormData({ 
+          ...formData, 
+          category: [...formData.category, existingCategory.name] 
+        })
+      }
+      setNewCategoryInput('')
+      return
+    }
+
+    // Add new category to the list
+    setCategories([...categories, { name: trimmedCategory, count: 0 }])
+    
+    // Auto-select the new category
+    setFormData({ 
+      ...formData, 
+      category: [...formData.category, trimmedCategory] 
+    })
+    
+    setNewCategoryInput('')
+    
+    setAlertModal({
+      isOpen: true,
+      message: `Category "${trimmedCategory}" created and selected`,
+      title: 'Category Added',
+      type: 'success'
+    })
   }
 
   const handleImport = async (file: File) => {
@@ -620,6 +676,71 @@ export default function ContactsPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="john@example.com"
                 />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Categories
+                </label>
+                
+                {/* Add New Category Input */}
+                <div className="mb-3 flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={newCategoryInput}
+                    onChange={(e) => setNewCategoryInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddNewCategory()
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Add new category..."
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewCategory}
+                    className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {/* Existing Categories */}
+                <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
+                  {categories.length === 0 ? (
+                    <p className="text-sm text-gray-500">Loading categories...</p>
+                  ) : (
+                    categories.map((cat) => (
+                      <label key={cat.name} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                        <input
+                          type="checkbox"
+                          checked={formData.category.includes(cat.name)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormData({ 
+                                ...formData, 
+                                category: [...formData.category, cat.name] 
+                              })
+                            } else {
+                              setFormData({ 
+                                ...formData, 
+                                category: formData.category.filter(c => c !== cat.name) 
+                              })
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{cat.name}</span>
+                        <span className="text-xs text-gray-400">({cat.count})</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Select one or more categories. Defaults to "Other" if none selected.
+                </p>
               </div>
             </div>
             <div className="flex space-x-4 mt-6">
