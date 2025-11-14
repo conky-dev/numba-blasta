@@ -30,7 +30,7 @@ if (!process.env.DATABASE_URL) {
 }
 
 if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-  console.error('⚠️  WARNING: Twilio credentials not set - SMS sending will be simulated');
+  console.error('⚠️  WARNING : Twilio credentials not set - SMS sending will be simulated');
 }
 
 // Initialize Twilio client
