@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth-utils';
-import { query } from '@/lib/db';
-import { extractTemplateVariables } from '@/lib/template-utils';
+import { authenticateRequest } from '@/app/api/_lib/auth-utils';
+import { query } from '@/app/api/_lib/db';
+import { extractTemplateVariables } from '@/app/api/_lib/template-utils';
 
 /**
  * GET /api/templates/:id

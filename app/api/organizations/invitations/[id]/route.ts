@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, requireAdmin } from '@/lib/auth-utils';
-import { query } from '@/lib/db';
+import { authenticateRequest, requireAdmin } from '@/app/api/_lib/auth-utils';
+import { query } from '@/app/api/_lib/db';
 
 /**
  * DELETE /api/organizations/invitations/:id

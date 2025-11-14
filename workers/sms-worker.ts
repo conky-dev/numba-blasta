@@ -6,7 +6,7 @@
 import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { Pool } from 'pg';
-import { SMSJobData } from '@/lib/sms-queue';
+import { SMSJobData } from '@/app/api/_lib/sms-queue';
 import twilio from 'twilio';
 
 // Startup logging

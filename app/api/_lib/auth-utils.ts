@@ -1,7 +1,8 @@
+import { NextRequest } from 'next/server';
+import { QueryResultRow } from 'pg';
+import { query } from '@/app/api/_lib/db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { NextRequest } from 'next/server';
-import { query } from './db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
@@ -18,42 +19,34 @@ export interface AuthContext {
   role?: string | null; // Nullable for users without org
 }
 
-/**
- * Hash a password using bcrypt
- */
+// --------------------
+// Basic auth helpers (server-only)
+// --------------------
+
 export async function hashPassword(password: string): Promise<string> {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
 }
 
-/**
- * Compare a password with a hashed password
- */
-export async function comparePassword(password: string, hashedPassword: string): Promise<boolean> {
+export async function comparePassword(
+  password: string,
+  hashedPassword: string
+): Promise<boolean> {
   return bcrypt.compare(password, hashedPassword);
 }
 
-/**
- * Generate a JWT token
- */
 export function generateToken(payload: JWTPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
 }
 
-/**
- * Verify and decode a JWT token
- */
 export function verifyToken(token: string): JWTPayload | null {
   try {
     return jwt.verify(token, JWT_SECRET) as JWTPayload;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
 
-/**
- * Verify token from request headers
- */
 export function getTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return null;
@@ -83,7 +76,9 @@ export async function authenticateRequest(
   }
 
   // Get user's org_id from database (may be null for new users)
-  const result = await query(
+  const result = await query<
+    { org_id: string | null; role: string | null } & QueryResultRow
+  >(
     `SELECT om.org_id, om.role 
      FROM organization_members om 
      WHERE om.user_id = $1 
@@ -123,4 +118,5 @@ export function requireAdmin(authContext: AuthContext): void {
     throw new Error('Admin access required');
   }
 }
+
 

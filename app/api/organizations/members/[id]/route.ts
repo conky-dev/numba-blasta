@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, requireAdmin, requireOwner } from '@/lib/auth-utils';
-import { query } from '@/lib/db';
+import { authenticateRequest, requireAdmin, requireOwner } from '@/app/api/_lib/auth-utils';
+import { query } from '@/app/api/_lib/db';
 
 /**
  * PATCH /api/organizations/members/:id

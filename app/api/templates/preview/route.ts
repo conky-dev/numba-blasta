@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { previewTemplate } from '@/lib/template-utils';
+import { previewTemplate } from '@/app/api/_lib/template-utils';
 
 /**
  * POST /api/templates/preview

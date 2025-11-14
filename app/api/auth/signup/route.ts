@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { hashPassword } from '@/lib/auth-utils';
-import { query } from '@/lib/db';
+import { hashPassword } from '@/app/api/_lib/auth-utils';
+import { query } from '@/app/api/_lib/db';
 
 export async function POST(request: NextRequest) {
   // ============================================================================

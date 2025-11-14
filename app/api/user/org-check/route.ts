@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth-utils';
+import { authenticateRequest } from '@/app/api/_lib/auth-utils';
 
 /**
  * GET /api/user/org-check

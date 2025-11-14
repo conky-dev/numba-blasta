@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth-utils';
-import { query } from '@/lib/db';
+import { authenticateRequest } from '@/app/api/_lib/auth-utils';
+import { query } from '@/app/api/_lib/db';
 
 /**
  * GET /api/sms/messages

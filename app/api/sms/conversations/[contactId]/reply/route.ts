@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth-utils';
-import { query } from '@/lib/db';
-import { queueSMS } from '@/lib/sms-queue';
+import { authenticateRequest } from '@/app/api/_lib/auth-utils';
+import { query } from '@/app/api/_lib/db';
+import { queueSMS } from '@/app/api/_lib/sms-queue';
 
 /**
  * POST /api/sms/conversations/:contactId/reply

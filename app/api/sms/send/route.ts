@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth-utils';
-import { query } from '@/lib/db';
-import { validatePhoneNumber, calculateSMSSegments, calculateSMSCost } from '@/lib/twilio-utils';
-import { renderTemplate } from '@/lib/template-utils';
-import { queueSMS } from '@/lib/sms-queue';
+import { authenticateRequest } from '@/app/api/_lib/auth-utils';
+import { query } from '@/app/api/_lib/db';
+import { validatePhoneNumber, calculateSMSSegments, calculateSMSCost } from '@/app/api/_lib/twilio-utils';
+import { renderTemplate } from '@/app/api/_lib/template-utils';
+import { queueSMS } from '@/app/api/_lib/sms-queue';
 
 export async function POST(request: NextRequest) {
   try {
