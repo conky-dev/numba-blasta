@@ -165,6 +165,10 @@ export async function PATCH(
       queryParams
     );
 
+    // Refresh materialized view to immediately show category changes in UI
+    // This is acceptable for single contact operations
+    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
+
     return NextResponse.json({
       message: 'Contact updated successfully',
       contact: result.rows[0],
@@ -214,6 +218,10 @@ export async function DELETE(
     if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
+
+    // Refresh materialized view to update category counts
+    // This is acceptable for single contact operations
+    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
 
     return NextResponse.json({
       message: 'Contact deleted successfully',

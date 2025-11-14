@@ -186,6 +186,10 @@ export async function POST(request: NextRequest) {
       [orgId, phone, firstName || null, lastName || null, email || null, categoryArray]
     );
 
+    // Refresh materialized view to immediately show new categories in UI
+    // This is acceptable for single contact operations
+    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
+
     return NextResponse.json({
       message: 'Contact created successfully',
       contact: result.rows[0],
