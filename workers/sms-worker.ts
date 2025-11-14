@@ -135,9 +135,14 @@ try {
           });
           
           twilioSid = twilioMessage.sid;
-          twilioStatus = twilioMessage.status;
+          // Map Twilio statuses to our DB statuses
+          // Twilio: queued, sending, sent, failed, delivered, undelivered, receiving, received, accepted, scheduled, canceled
+          // Our DB: queued, sent, delivered, failed, undelivered, received
+          twilioStatus = twilioMessage.status === 'accepted' || twilioMessage.status === 'sending' 
+            ? 'sent' 
+            : twilioMessage.status;
           
-          console.log(`[WORKER] ✅ Twilio sent: ${twilioSid} (${twilioStatus})`);
+          console.log(`[WORKER] ✅ Twilio sent: ${twilioSid} (${twilioMessage.status} -> ${twilioStatus})`);
         } catch (twilioError: any) {
           console.error(`[WORKER] ❌ Twilio error:`, twilioError.message);
           throw new Error(`Twilio failed: ${twilioError.message}`);
@@ -248,6 +253,18 @@ try {
         console.error(`[WORKER] ❌ Transaction error:`, error.message);
         console.error(`[WORKER] ❌ Error stack:`, error.stack);
         await query('ROLLBACK');
+        
+        // CRITICAL: If Twilio send succeeded, don't throw
+        // This prevents BullMQ from retrying and sending duplicate messages
+        if (twilioSid) {
+          console.warn(`[WORKER] ⚠️  DB save failed but Twilio send succeeded (${twilioSid})`);
+          console.warn(`[WORKER] ⚠️  Marking job as complete to prevent duplicate send`);
+          // Job completes successfully even though DB save failed
+          // The message was sent to the user, which is what matters
+          return { success: true, twilioSid, warning: 'DB save failed but SMS sent' };
+        }
+        
+        // If Twilio send failed, it's safe to retry
         throw error;
       }
       
