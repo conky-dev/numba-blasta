@@ -132,13 +132,14 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Inbound message saved to database');
 
-    // Respond to Twilio (must be 200 OK or Twilio will retry)
-    return new NextResponse('Message received', { status: 200 });
+    // Respond to Twilio with no auto-reply SMS (no TwiML Message)
+    // 204 No Content is enough to tell Twilio the webhook was handled.
+    return new NextResponse(null, { status: 204 });
   } catch (error: any) {
     console.error('❌ Twilio webhook error:', error);
     
-    // Still return 200 to Twilio to prevent retries
-    return new NextResponse('Error processing message', { status: 200 });
+    // Still return an empty 200 to Twilio to prevent retries, but no auto-reply
+    return new NextResponse(null, { status: 200 });
   }
 }
 
