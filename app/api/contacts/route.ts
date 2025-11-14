@@ -27,7 +27,9 @@ export async function GET(request: NextRequest) {
       SELECT id, org_id, phone, first_name, last_name, email, 
              category, opted_out_at, created_at, updated_at
       FROM contacts
-      WHERE org_id = $1 AND deleted_at IS NULL
+      WHERE org_id = $1 
+        AND deleted_at IS NULL
+        AND opted_out_at IS NULL
     `;
     
     const params: any[] = [orgId];
@@ -83,7 +85,9 @@ export async function GET(request: NextRequest) {
     const countResult = await query(
       `SELECT COUNT(*)::integer as total
        FROM contacts
-       WHERE org_id = $1 AND deleted_at IS NULL
+       WHERE org_id = $1 
+         AND deleted_at IS NULL
+         AND opted_out_at IS NULL
        ${search ? `AND (
          first_name ILIKE $2 OR
          last_name ILIKE $2 OR

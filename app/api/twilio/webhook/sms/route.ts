@@ -101,6 +101,25 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Contact not found', { status: 200 }); // Still return 200 to Twilio
     }
 
+    // If the message body is a STOP request, mark contact as opted out
+    const normalizedBody = body.trim().toLowerCase();
+    const isStop =
+      normalizedBody === 'stop' ||
+      normalizedBody === 'stop.' ||
+      normalizedBody === 'stop!' ||
+      normalizedBody === 'stop\n';
+
+    if (isStop && contactId) {
+      console.log('🚫 STOP received, marking contact as opted out:', { contactId, from });
+      await query(
+        `UPDATE contacts
+         SET opted_out_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [contactId]
+      );
+    }
+
     // Insert the inbound message into the database
     await query(
       `INSERT INTO sms_messages (
