@@ -555,6 +555,20 @@ class ApiClient {
     },
 
     /**
+     * Verify email with code
+     */
+    verifyCode: async (email: string, code: string) => {
+      return this.post('/api/auth/verify-code', { email, code }, { requiresAuth: false });
+    },
+
+    /**
+     * Resend email verification code
+     */
+    resendCode: async (email: string) => {
+      return this.post('/api/auth/resend-code', { email }, { requiresAuth: false });
+    },
+
+    /**
      * Logout
      */
     logout: async () => {

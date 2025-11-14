@@ -232,11 +232,10 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* Sign Up Link - DISABLED */}
-          {/* 
+          {/* Sign Up Link */}
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <button
                 type="button"
                 onClick={() => router.push('/signup')}
@@ -246,7 +245,6 @@ export default function LoginPage() {
               </button>
             </p>
           </div>
-          */}
         </div>
 
         {/* Footer */}

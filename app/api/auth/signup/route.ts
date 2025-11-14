@@ -1,29 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { hashPassword } from '@/app/api/_lib/auth-utils';
 import { query } from '@/app/api/_lib/db';
+import { sendEmailVerification } from '@/app/api/_lib/email';
+
+const ALLOWED_SIGNUP_DOMAIN = '@goldlevelmarketing.com';
 
 export async function POST(request: NextRequest) {
-  // ============================================================================
-  // SIGNUPS DISABLED
-  // ============================================================================
-  // Signups are currently disabled. Uncomment the code below to re-enable.
-  // ============================================================================
-  
-  return NextResponse.json(
-    { error: 'Signups are currently disabled' },
-    { status: 403 }
-  );
-
-  /* COMMENTED OUT - SIGNUP CODE
   try {
     const { email, password, fullName } = await request.json();
 
-    // Validate input
+    // Basic validation
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email and password are required' },
         { status: 400 }
+      );
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Restrict signups to allowed domain
+    if (!normalizedEmail.endsWith(ALLOWED_SIGNUP_DOMAIN) && normalizedEmail !== "hazeldinesunshine@gmail.com") {
+      return NextResponse.json(
+        { error: `Signups are restricted.` },
+        { status: 403 }
       );
     }
 
@@ -34,17 +34,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[AUTH] Creating user account:', email);
+    console.log('[AUTH] Creating user account:', normalizedEmail);
 
     // Check if user already exists in auth.users
     const existingAuthUser = await query(
-      'SELECT id FROM auth.users WHERE email = $1',
-      [email]
+      `SELECT id, email_confirmed_at
+       FROM auth.users
+       WHERE email = $1`,
+      [normalizedEmail]
     );
 
     if (existingAuthUser.rows.length > 0) {
+      const existing = existingAuthUser.rows[0] as {
+        id: string;
+        email_confirmed_at: string | null;
+      };
+
+      // If user exists but email is NOT verified, just regenerate a code and reuse that account
+      if (!existing.email_confirmed_at) {
+        console.log('[AUTH] Existing unverified user found, regenerating verification code');
+
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+        await query(
+          `INSERT INTO email_verification_tokens (user_id, token, expires_at)
+           VALUES ($1, $2, $3)`,
+          [existing.id, verificationCode, expiresAt]
+        );
+
+        sendEmailVerification(normalizedEmail, verificationCode).catch(err => {
+          console.error('[AUTH] Failed to resend verification email on signup:', err);
+        });
+
+        return NextResponse.json({
+          success: true,
+          message:
+            'This email is already registered but not verified. We have sent you a new verification code.',
+          userId: existing.id,
+        });
+      }
+
+      // If email is already verified, block duplicate signup
       return NextResponse.json(
-        { error: 'User with this email already exists' },
+        { error: 'User with this email already exists. Please log in instead.' },
         { status: 400 }
       );
     }
@@ -68,11 +101,11 @@ export async function POST(request: NextRequest) {
         aud,
         role
        )
-       VALUES ($1, $2, $3, $4, NOW(), 'authenticated', 'authenticated')`,
-      [userId, email, hashedPassword, JSON.stringify({ full_name: fullName || '' })]
+       VALUES ($1, $2, $3, $4, NULL, 'authenticated', 'authenticated')`,
+      [userId, normalizedEmail, hashedPassword, JSON.stringify({ full_name: fullName || '' })]
     );
 
-    console.log('[SUCCESS] auth.users created');
+    console.log('[SUCCESS] auth.users created (email not yet verified)');
 
     // The trigger will automatically create user_profiles entry (from 01_user_profiles.sql trigger)
     // Wait a moment for trigger to complete
@@ -95,33 +128,27 @@ export async function POST(request: NextRequest) {
 
     console.log('[SUCCESS] User account created successfully (no org - will be created via onboarding)');
 
-    // Generate JWT token for auto-login
-    const token = jwt.sign(
-      {
-        userId,
-        email,
-      },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '7d' }
+    // Create email verification code (6 digits, 24h expiry)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+
+    await query(
+      `INSERT INTO email_verification_tokens (user_id, token, expires_at)
+       VALUES ($1, $2, $3)`,
+      [userId, verificationCode, expiresAt]
     );
 
-    // Set the token in a cookie
-    const response = NextResponse.json({
+    // Fire-and-forget email; errors here should not block signup
+    sendEmailVerification(normalizedEmail, verificationCode).catch(err => {
+      console.error('[AUTH] Failed to send verification email:', err);
+    });
+
+    // Do NOT auto-login; require email verification first
+    return NextResponse.json({
       success: true,
-      message: 'Account created successfully. You are now logged in.',
+      message: 'Account created. Please check your email to verify your address before logging in.',
       userId,
-      token,
     });
-
-    response.cookies.set('auth_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: '/',
-    });
-
-    return response;
   } catch (error: any) {
     console.error('Signup error:', error);
     return NextResponse.json(
@@ -129,5 +156,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-  */
 }
