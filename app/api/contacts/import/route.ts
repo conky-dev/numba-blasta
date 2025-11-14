@@ -107,24 +107,39 @@ export async function POST(request: NextRequest) {
       try {
         // Check if contact exists
         const existingContact = await query(
-          `SELECT id FROM contacts 
+          `SELECT id, category FROM contacts 
            WHERE org_id = $1 AND phone = $2 AND deleted_at IS NULL`,
           [orgId, phone]
         );
 
         if (existingContact.rows.length > 0) {
-          // Update existing contact
+          const existing = existingContact.rows[0] as {
+            id: string;
+            category: string[] | null;
+          };
+
+          const existingCategories = Array.isArray(existing.category)
+            ? existing.category
+            : [];
+
+          // Merge import category with existing categories
+          const mergedCategories = Array.from(
+            new Set([...existingCategories, ...categoryArray])
+          );
+
           await query(
             `UPDATE contacts
              SET first_name = COALESCE($1, first_name),
                  last_name = COALESCE($2, last_name),
                  email = COALESCE($3, email),
+                 category = $4,
                  updated_at = NOW()
-             WHERE org_id = $4 AND phone = $5`,
+             WHERE org_id = $5 AND phone = $6`,
             [
               row.first_name || row.firstName || null,
               row.last_name || row.lastName || null,
               row.email || null,
+              mergedCategories,
               orgId,
               phone,
             ]

@@ -167,21 +167,75 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for duplicate phone number in org
+    // Check for existing contact with same phone in org
     const duplicateCheck = await query(
-      `SELECT id FROM contacts 
+      `SELECT id, category
+       FROM contacts 
        WHERE org_id = $1 AND phone = $2 AND deleted_at IS NULL`,
       [orgId, phone]
     );
 
     if (duplicateCheck.rows.length > 0) {
+      const existing = duplicateCheck.rows[0] as {
+        id: string;
+        category: string[] | null;
+      };
+
+      const existingCategories = Array.isArray(existing.category)
+        ? existing.category
+        : [];
+
+      // Merge categories (avoid duplicates)
+      const mergedCategories = Array.from(
+        new Set([...existingCategories, ...categoryArray])
+      );
+
+      // If no new categories were added, treat as duplicate for that category set
+      if (mergedCategories.length === existingCategories.length) {
+        return NextResponse.json(
+          {
+            error:
+              'Contact with this phone number already exists in the selected categories',
+          },
+          { status: 409 }
+        );
+      }
+
+      // Update existing contact: merge categories and optionally update name/email
+      const result = await query(
+        `UPDATE contacts
+         SET first_name = COALESCE($1, first_name),
+             last_name = COALESCE($2, last_name),
+             email = COALESCE($3, email),
+             category = $4,
+             updated_at = NOW()
+         WHERE id = $5
+         RETURNING id, org_id, phone, first_name, last_name, email, category,
+                   opted_out_at, created_at, updated_at`,
+        [
+          firstName || null,
+          lastName || null,
+          email || null,
+          mergedCategories,
+          existing.id,
+        ]
+      );
+
+      // Refresh materialized view to immediately show new categories in UI
+      await query(
+        'REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts'
+      );
+
       return NextResponse.json(
-        { error: 'Contact with this phone number already exists' },
-        { status: 409 }
+        {
+          message: 'Contact updated with additional categories',
+          contact: result.rows[0],
+        },
+        { status: 200 }
       );
     }
 
-    // Create contact
+    // Create new contact
     const result = await query(
       `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -191,13 +245,15 @@ export async function POST(request: NextRequest) {
     );
 
     // Refresh materialized view to immediately show new categories in UI
-    // This is acceptable for single contact operations
     await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
 
-    return NextResponse.json({
-      message: 'Contact created successfully',
-      contact: result.rows[0],
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        message: 'Contact created successfully',
+        contact: result.rows[0],
+      },
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error('Create contact error:', error);
     

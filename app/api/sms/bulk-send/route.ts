@@ -82,10 +82,11 @@ export async function POST(request: NextRequest) {
     }
     
     const contactsResult = await query(
-      `SELECT id, first_name, last_name, phone, category
+      `SELECT DISTINCT ON (phone)
+         id, first_name, last_name, phone, category
        FROM contacts 
        ${whereClause}
-       ORDER BY created_at ASC
+       ORDER BY phone, created_at ASC
        LIMIT $${paramIndex}`,
       [...queryParams, BATCH_SIZE]
     );
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
 
     // Check if there are more contacts than the batch size
     const totalContactsResult = await query(
-      `SELECT COUNT(*) as total
+      `SELECT COUNT(DISTINCT phone) as total
        FROM contacts 
        ${whereClause}`,
       queryParams.slice(0, paramIndex - 1)

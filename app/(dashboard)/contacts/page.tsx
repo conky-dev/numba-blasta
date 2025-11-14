@@ -482,6 +482,9 @@ export default function ContactsPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                       Email
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                      Categories
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                       Status
                     </th>
@@ -518,6 +521,22 @@ export default function ContactsPage() {
                           <div className="flex items-center text-sm text-gray-900">
                             <MdEmail className="w-4 h-4 mr-2 text-gray-400" />
                             {contact.email}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                        {contact.category && contact.category.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {contact.category.map((cat) => (
+                              <span
+                                key={cat}
+                                className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-xs font-medium text-gray-700"
+                              >
+                                {cat}
+                              </span>
+                            ))}
                           </div>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
