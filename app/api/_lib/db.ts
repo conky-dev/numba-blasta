@@ -38,11 +38,17 @@ export function getPool(): Pool {
           database,
           user,
           password, // No encoding needed!
-          ssl: sslConfig
+          ssl: sslConfig,
+          // Serverless-optimized settings
+          max: 1, // Use only 1 connection per Lambda (Vercel serverless)
+          idleTimeoutMillis: 10000, // Close idle connections after 10s
+          connectionTimeoutMillis: 5000, // Fail fast if can't connect
         });
         
         pool.on('error', (err) => {
           console.error('[DB] Unexpected pool error:', err);
+          // Reset pool on error so next request creates fresh connection
+          pool = null;
         });
         
         console.log('[DB] ✅ Pool created with individual parameters');
@@ -88,11 +94,17 @@ export function getPool(): Pool {
       try {
         pool = new Pool({ 
           connectionString: url, 
-          ssl: sslConfig
+          ssl: sslConfig,
+          // Serverless-optimized settings
+          max: 1, // Use only 1 connection per Lambda (Vercel serverless)
+          idleTimeoutMillis: 10000, // Close idle connections after 10s
+          connectionTimeoutMillis: 5000, // Fail fast if can't connect
         });
         
         pool.on('error', (err) => {
           console.error('[DB] Unexpected pool error:', err);
+          // Reset pool on error so next request creates fresh connection
+          pool = null;
         });
         
         console.log('[DB] ✅ Pool created with connection string');
@@ -121,38 +133,58 @@ export function resetPool() {
 /**
  * Execute a database query
  * This function should ONLY be used within API routes
+ * Includes retry logic for "Connection terminated unexpectedly" errors
  */
 export async function query<T extends QueryResultRow = any>(
   sql: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
-  try {
-    const pool = getPool();
-    const client = await pool.connect();
+  let lastError: any;
+  
+  // Retry up to 2 times on connection termination
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await client.query(sql, params);
-      return res;
-    } finally {
-      client.release();
+      const currentPool = getPool();
+      const client = await currentPool.connect();
+      try {
+        const res = await client.query(sql, params);
+        return res;
+      } finally {
+        client.release();
+      }
+    } catch (error: any) {
+      lastError = error;
+      
+      // If connection terminated, reset pool and retry once
+      if (error.message?.includes('Connection terminated unexpectedly') && attempt === 1) {
+        console.warn(`[DB] ⚠️  Connection terminated, resetting pool and retrying (attempt ${attempt}/2)`);
+        pool = null; // Force recreation on next getPool()
+        continue;
+      }
+      
+      // Otherwise, log and rethrow
+      console.error('[DB] ❌ Database query failed:', {
+        error: error.message,
+        code: error.code,
+        detail: error.detail,
+        hint: error.hint,
+        sql: sql?.substring(0, 100) + '...',
+        stack: error.stack?.split('\n')[0],
+        attempt
+      });
+      
+      // Add helpful error message for common issues
+      if (error.code === 'ENOTFOUND') {
+        console.error('[DB] 🔴 ENOTFOUND error means the database hostname cannot be resolved.');
+        console.error('[DB] 🔴 Please check your DATABASE_URL environment variable in Vercel.');
+        console.error('[DB] 🔴 It should look like: postgresql://user:pass@host.supabase.co:5432/postgres');
+      }
+      
+      throw error;
     }
-  } catch (error: any) {
-    console.error('[DB] ❌ Database query failed:', {
-      error: error.message,
-      code: error.code,
-      detail: error.detail,
-      hint: error.hint,
-      sql: sql?.substring(0, 100) + '...',
-      stack: error.stack?.split('\n')[0]
-    });
-    
-    // Add helpful error message for common issues
-    if (error.code === 'ENOTFOUND') {
-      console.error('[DB] 🔴 ENOTFOUND error means the database hostname cannot be resolved.');
-      console.error('[DB] 🔴 Please check your DATABASE_URL environment variable in Vercel.');
-      console.error('[DB] 🔴 It should look like: postgresql://user:pass@host.supabase.co:5432/postgres');
-    }
-    
-    throw error;
   }
+  
+  // Should never reach here, but TypeScript needs it
+  throw lastError;
 }
 

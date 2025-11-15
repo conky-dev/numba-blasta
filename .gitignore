@@ -39,3 +39,6 @@ product_screenshots
 compare
 
 *.md
+*.csv
+test-data/update.sql
+test-data/fix.py
