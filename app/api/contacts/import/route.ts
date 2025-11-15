@@ -4,12 +4,7 @@ import { query } from '@/app/api/_lib/db';
 import Papa from 'papaparse';
 
 interface CSVRow {
-  first_name?: string;
-  last_name?: string;
-  phone?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
+  [key: string]: string | undefined;
 }
 
 /**
@@ -26,6 +21,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const category = (formData.get('category') as string) || 'Other';
+    const mappingJson = formData.get('mapping') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -66,7 +62,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rows = parseResult.data;
+    const rows = parseResult.data as CSVRow[];
     
     if (rows.length === 0) {
       return NextResponse.json(
@@ -74,6 +70,36 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Build mapping from normalized header -> field name (phone, first_name, etc.)
+    let fieldMapping: Record<string, string> = {};
+    if (mappingJson) {
+      try {
+        const parsed = JSON.parse(mappingJson) as Record<string, string>;
+        fieldMapping = parsed || {};
+      } catch (e) {
+        console.warn('Invalid mapping JSON, ignoring:', e);
+      }
+    }
+
+    const getFieldValue = (
+      row: CSVRow,
+      targetField: string,
+      fallbackKeys: string[]
+    ): string | undefined => {
+      const header = Object.keys(fieldMapping).find(
+        (h) => fieldMapping[h] === targetField
+      );
+      if (header && row[header] != null) {
+        return row[header]!.toString().trim();
+      }
+      for (const key of fallbackKeys) {
+        if (row[key] != null) {
+          return row[key]!.toString().trim();
+        }
+      }
+      return undefined;
+    };
 
     // Process contacts in batches
     const results = {
@@ -88,7 +114,8 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const phone = row.phone?.trim();
+      const phone =
+        getFieldValue(row, 'phone', ['phone', 'phone_number', 'mobile']) || '';
 
       // Skip rows without phone number
       if (!phone) {
@@ -136,9 +163,9 @@ export async function POST(request: NextRequest) {
                  updated_at = NOW()
              WHERE org_id = $5 AND phone = $6`,
             [
-              row.first_name || row.firstName || null,
-              row.last_name || row.lastName || null,
-              row.email || null,
+              getFieldValue(row, 'first_name', ['first_name', 'firstname', 'first']) || null,
+              getFieldValue(row, 'last_name', ['last_name', 'lastname', 'last']) || null,
+              getFieldValue(row, 'email', ['email', 'email_address']) || null,
               mergedCategories,
               orgId,
               phone,
@@ -153,9 +180,9 @@ export async function POST(request: NextRequest) {
             [
               orgId,
               phone,
-              row.first_name || row.firstName || null,
-              row.last_name || row.lastName || null,
-              row.email || null,
+              getFieldValue(row, 'first_name', ['first_name', 'firstname', 'first']) || null,
+              getFieldValue(row, 'last_name', ['last_name', 'lastname', 'last']) || null,
+              getFieldValue(row, 'email', ['email', 'email_address']) || null,
               categoryArray,
             ]
           );

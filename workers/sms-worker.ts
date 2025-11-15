@@ -132,7 +132,7 @@ try {
           const isFirstOutbound = noticeResult.rows.length > 0;
 
           if (isFirstOutbound && !/stop to unsubscribe/i.test(message)) {
-            finalMessage = `${message.trim()}\nReply STOP to unsubscribe.`;
+            finalMessage = `${message.trim()}\n\nReply STOP to unsubscribe.`;
             console.log(
               `[WORKER] Appended STOP verbiage for first outbound to contact ${contactId}`
             );

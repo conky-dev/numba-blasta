@@ -278,14 +278,22 @@ class ApiClient {
     /**
      * Import contacts from CSV
      */
-    import: async (file: File, category?: string) => {
+    import: async (
+      file: File,
+      category?: string,
+      mapping?: Record<string, string>
+    ) => {
       const formData = new FormData();
       formData.append('file', file);
       if (category) {
         formData.append('category', category);
       }
+      if (mapping && Object.keys(mapping).length > 0) {
+        formData.append('mapping', JSON.stringify(mapping));
+      }
       
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const token =
+        typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       if (!token) {
         throw new Error('Authentication required');
       }
@@ -293,7 +301,7 @@ class ApiClient {
       const response = await fetch('/api/contacts/import', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: formData, // Don't set Content-Type, let browser set it with boundary
       });
