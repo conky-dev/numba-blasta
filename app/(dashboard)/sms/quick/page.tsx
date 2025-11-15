@@ -74,7 +74,7 @@ export default function QuickSMSPage() {
     loadCategories()
   }, [])
 
-  // Calculate SMS segments (160 chars per segment)
+  // Calculate SMS segments (simple character counting)
   const charCount = message?.length || 0
   const smsCount = Math.ceil(charCount / 160) || 1
 
@@ -363,7 +363,7 @@ export default function QuickSMSPage() {
                 placeholder="Type your message here..."
               />
               <div className="px-4 py-2 text-xs text-gray-500 text-right bg-gray-50">
-                Approx. {charCount} characters / {smsCount} SMS per recipient.
+                {charCount} characters / {smsCount} SMS per recipient
               </div>
             </div>
           </div>

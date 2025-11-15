@@ -200,12 +200,21 @@ export async function POST(request: NextRequest) {
     // Send SMS alert to admin about webhook failure
     try {
       const alertNumber = '+14805109369';
-      const errorMessage = `🚨 Webhook Error\n\nFrom: ${from || 'unknown'}\nError: ${error.message}\nTime: ${new Date().toLocaleString()}`;
+      const fullErrorLog = `🚨 Webhook Error
+
+From: ${from || 'unknown'}
+Error: ${error.message}
+Code: ${error.code || 'N/A'}
+Stack: ${error.stack?.split('\n').slice(0, 3).join('\n') || 'N/A'}
+Time: ${new Date().toLocaleString()}`;
+      
+      // Truncate to 1600 chars (Twilio max)
+      const errorMessage = fullErrorLog.substring(0, 1600);
       
       if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_MESSAGING_SERVICE_SID) {
         const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
         await twilioClient.messages.create({
-          body: errorMessage.substring(0, 1600), // Twilio max is 1600 chars
+          body: errorMessage,
           to: alertNumber,
           messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
         });
