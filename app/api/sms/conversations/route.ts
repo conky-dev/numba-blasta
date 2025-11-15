@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const validOffset = Math.max(offset, 0);
 
     // Build WHERE clause
-    let whereClause = 'WHERE c.org_id = $1 AND c.deleted_at IS NULL';
+    let whereClause = 'WHERE c.org_id = $1 AND c.deleted_at IS NULL AND c.opted_out_at IS NULL';
     const queryParams: any[] = [orgId];
     let paramIndex = 2;
 
