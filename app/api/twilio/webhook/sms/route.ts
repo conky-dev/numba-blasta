@@ -93,12 +93,9 @@ export async function POST(request: NextRequest) {
       contactId = contactResult.rows[0].id;
       orgId = contactResult.rows[0].org_id;
     } else {
-      // Contact not found - you could auto-create or just log it
+      // Contact not found - just log and return empty success
       console.warn(`⚠️  Inbound message from unknown number: ${from}`);
-      
-      // For now, just store it without a contact/org association
-      // In production, you'd want to handle this better
-      return new NextResponse('Contact not found', { status: 200 }); // Still return 200 to Twilio
+      return new NextResponse(null, { status: 204 });
     }
 
     // If the message body is a STOP request, mark contact as opted out
