@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     // Extract Twilio webhook parameters (now trusted)
     // -----------------------------------------------------------------------
     const messageSid = formData.get('MessageSid') as string;
-    const from = formData.get('From') as string; // Contact's phone number
+    const from = formData.get('From') as string; // Contact's phone number (E.164 from Twilio)
     const to = formData.get('To') as string; // Your Twilio number
     const body = formData.get('Body') as string;
     const numSegments = parseInt(
@@ -76,14 +76,26 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Missing parameters', { status: 400 });
     }
 
-    // Find the contact by phone number
+    // -----------------------------------------------------------------------
+    // Normalize phone and find the contact
+    // We compare on the last 10 digits so formats like:
+    //   "+1 (480) 510-9369" and "480-510-9369" both match.
+    // -----------------------------------------------------------------------
+    const normalizeToLast10 = (phone: string) => {
+      const digits = phone.replace(/\D/g, '');
+      return digits.slice(-10);
+    };
+
+    const normalizedFrom10 = normalizeToLast10(from);
+
+    // Find the contact by normalized 10-digit phone number
     const contactResult = await query(
       `SELECT id, org_id, first_name, last_name 
        FROM contacts 
-       WHERE phone = $1 
+       WHERE RIGHT(regexp_replace(phone, '\\D', '', 'g'), 10) = $1 
        AND deleted_at IS NULL
        LIMIT 1`,
-      [from]
+      [normalizedFrom10]
     );
 
     let contactId = null;
