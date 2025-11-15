@@ -174,7 +174,47 @@ export async function POST(request: NextRequest) {
     // 204 No Content is enough to tell Twilio the webhook was handled.
     return new NextResponse(null, { status: 204 });
   } catch (error: any) {
-    console.error('❌ Twilio webhook error:', error);
+    // Log as ERROR with full details - Vercel will flag this in monitoring
+    console.error('[Twilio Webhook] ❌ CRITICAL ERROR:', {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      twilioData: {
+        messageSid,
+        from,
+        to,
+        bodyPreview: body?.substring(0, 50)
+      }
+    });
+    
+    // Also log a structured error for Vercel's error tracking
+    console.error(JSON.stringify({
+      level: 'error',
+      event: 'twilio_webhook_failure',
+      error: error.message,
+      messageSid,
+      from,
+      timestamp: new Date().toISOString()
+    }));
+    
+    // Send SMS alert to admin about webhook failure
+    try {
+      const alertNumber = '+14805109369';
+      const errorMessage = `🚨 Webhook Error\n\nFrom: ${from || 'unknown'}\nError: ${error.message}\nTime: ${new Date().toLocaleString()}`;
+      
+      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_MESSAGING_SERVICE_SID) {
+        const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        await twilioClient.messages.create({
+          body: errorMessage.substring(0, 1600), // Twilio max is 1600 chars
+          to: alertNumber,
+          messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+        });
+        console.log('[Twilio Webhook] 📱 Error alert SMS sent to admin');
+      }
+    } catch (alertError: any) {
+      // Don't let alert failures break the webhook response
+      console.error('[Twilio Webhook] Failed to send error alert SMS:', alertError.message);
+    }
     
     // Still return an empty 200 to Twilio to prevent retries, but no auto-reply
     return new NextResponse(null, { status: 200 });
