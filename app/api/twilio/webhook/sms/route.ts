@@ -8,6 +8,12 @@ import { query } from '@/app/api/_lib/db';
  * https://www.twilio.com/docs/messaging/guides/webhook-request
  */
 export async function POST(request: NextRequest) {
+  // Declare variables at the top so they're available in catch block
+  let messageSid: string | undefined;
+  let from: string | undefined;
+  let to: string | undefined;
+  let body: string | undefined;
+  
   try {
     const formData = await request.formData();
 
@@ -60,10 +66,10 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     // Extract Twilio webhook parameters (now trusted)
     // -----------------------------------------------------------------------
-    const messageSid = formData.get('MessageSid') as string;
-    const from = formData.get('From') as string; // Contact's phone number (E.164 from Twilio)
-    const to = formData.get('To') as string; // Your Twilio number
-    const body = formData.get('Body') as string;
+    messageSid = formData.get('MessageSid') as string;
+    from = formData.get('From') as string; // Contact's phone number (E.164 from Twilio)
+    to = formData.get('To') as string; // Your Twilio number
+    body = formData.get('Body') as string;
     const numSegments = parseInt(
       ((formData.get('NumSegments') as string) || '1') as string,
       10

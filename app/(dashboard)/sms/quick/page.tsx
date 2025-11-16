@@ -19,7 +19,7 @@ interface Category {
 }
 
 export default function QuickSMSPage() {
-  const [to, setTo] = useState<string[]>(['all']) // Changed to array for multi-select
+  const [to, setTo] = useState<string[]>([]) // Changed to empty array - no default selection
   const [categories, setCategories] = useState<Category[]>([])
   const [totalContacts, setTotalContacts] = useState(0)
   const [loadingCategories, setLoadingCategories] = useState(true)
