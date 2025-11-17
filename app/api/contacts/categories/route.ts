@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/app/api/_lib/auth-utils';
 import { query } from '@/app/api/_lib/db';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/contacts/categories
  * Get contact categories with counts for the organization
