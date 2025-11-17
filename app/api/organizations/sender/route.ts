@@ -18,6 +18,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // First check new phone_numbers table for primary number
+    const phoneNumbersResult = await query(
+      `SELECT phone_number, status
+       FROM phone_numbers
+       WHERE org_id = $1 AND is_primary = true
+       LIMIT 1`,
+      [orgId]
+    );
+
+    if (phoneNumbersResult.rows.length > 0) {
+      const row = phoneNumbersResult.rows[0];
+      return NextResponse.json(
+        {
+          hasNumber: true,
+          number: row.phone_number,
+          status: row.status || 'none',
+        },
+        { status: 200 }
+      );
+    }
+
+    // Fallback to old organizations table for backward compatibility
     const result = await query(
       `SELECT sms_sender_number, sms_sender_status
        FROM organizations
@@ -71,7 +93,25 @@ export async function POST(request: NextRequest) {
 
     console.log(`[ORG SENDER] Provision request from user ${userId} for org ${orgId}`);
 
-    // Check if org already has a sender number
+    // First check new phone_numbers table
+    const existingPhoneNumbers = await query(
+      `SELECT phone_number, status FROM phone_numbers WHERE org_id = $1 LIMIT 1`,
+      [orgId]
+    );
+
+    if (existingPhoneNumbers.rows.length > 0) {
+      const row = existingPhoneNumbers.rows[0];
+      return NextResponse.json(
+        {
+          success: true,
+          number: row.phone_number,
+          status: row.status || 'awaiting_verification',
+        },
+        { status: 200 }
+      );
+    }
+
+    // Fallback: Check old organizations table
     const existing = await query(
       `SELECT sms_sender_number, sms_sender_status
        FROM organizations
@@ -91,9 +131,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Provision a new toll-free number via Twilio
-    const { phoneNumber } = await provisionOrgTollFreeNumber(orgId);
+    const { phoneNumber, phoneSid } = await provisionOrgTollFreeNumber(orgId);
 
-    // Store on organizations as awaiting verification
+    // Store in new phone_numbers table (preferred)
+    const insertResult = await query(
+      `INSERT INTO phone_numbers (org_id, phone_number, phone_sid, type, status, is_primary, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING phone_number, status`,
+      [orgId, phoneNumber, phoneSid, 'toll-free', 'awaiting_verification', true, userId]
+    );
+
+    // Also update organizations table for backward compatibility
     await query(
       `UPDATE organizations
        SET sms_sender_number = $1,
@@ -106,6 +154,7 @@ export async function POST(request: NextRequest) {
     console.log('[ORG SENDER] Provisioned toll-free number for org:', {
       orgId,
       phoneNumber,
+      phoneSid,
     });
 
     return NextResponse.json(

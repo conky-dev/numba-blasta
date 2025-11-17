@@ -1,20 +1,25 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MdPhone, MdAdd, MdCheckCircle, MdError, MdSchedule, MdRefresh } from 'react-icons/md'
+import { MdPhone, MdAdd, MdCheckCircle, MdError, MdSchedule, MdRefresh, MdStar, MdStarBorder, MdDelete } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 
 interface PhoneNumber {
+  id: string
   number: string
+  phoneSid?: string
+  type: 'toll-free' | 'local' | 'short-code'
   status: 'none' | 'awaiting_verification' | 'verified' | 'failed'
-  type?: 'toll-free' | 'local' | 'short-code'
+  isPrimary: boolean
+  createdAt: string
 }
 
 export default function PhoneNumbersPage() {
-  const [phoneNumber, setPhoneNumber] = useState<PhoneNumber | null>(null)
+  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
   const [loading, setLoading] = useState(true)
   const [provisioning, setProvisioning] = useState(false)
+  const [updating, setUpdating] = useState<string | null>(null)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -34,7 +39,7 @@ export default function PhoneNumbersPage() {
     setLoading(true)
     try {
       const token = localStorage.getItem('auth_token')
-      const response = await fetch('/api/organizations/sender', {
+      const response = await fetch('/api/organizations/phone-numbers', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -42,15 +47,7 @@ export default function PhoneNumbersPage() {
 
       if (response.ok) {
         const data = await response.json()
-        if (data.hasNumber && data.number) {
-          setPhoneNumber({
-            number: data.number,
-            status: data.status || 'none',
-            type: 'toll-free' // Default to toll-free for now
-          })
-        } else {
-          setPhoneNumber(null)
-        }
+        setPhoneNumbers(data.phoneNumbers || [])
       } else {
         throw new Error('Failed to load phone numbers')
       }
@@ -71,7 +68,7 @@ export default function PhoneNumbersPage() {
     setProvisioning(true)
     try {
       const token = localStorage.getItem('auth_token')
-      const response = await fetch('/api/organizations/sender', {
+      const response = await fetch('/api/organizations/phone-numbers', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -85,15 +82,11 @@ export default function PhoneNumbersPage() {
         throw new Error(data.error || 'Failed to provision phone number')
       }
 
-      setPhoneNumber({
-        number: data.number,
-        status: data.status || 'awaiting_verification',
-        type: 'toll-free'
-      })
+      await loadPhoneNumbers()
 
       setAlertModal({
         isOpen: true,
-        message: `Successfully provisioned a toll-free number: ${data.number}\n\nStatus: ${data.status === 'awaiting_verification' ? 'Awaiting verification' : data.status}. You can start using it once verification is complete.`,
+        message: `Successfully provisioned a toll-free number: ${data.phoneNumber.number}\n\nStatus: ${data.phoneNumber.status === 'awaiting_verification' ? 'Awaiting verification' : data.phoneNumber.status}. You can start using it once verification is complete.${data.phoneNumber.isPrimary ? '\n\nThis number has been set as your primary number.' : ''}`,
         title: 'Phone Number Provisioned',
         type: 'success'
       })
@@ -107,6 +100,84 @@ export default function PhoneNumbersPage() {
       })
     } finally {
       setProvisioning(false)
+    }
+  }
+
+  const handleSetPrimary = async (phoneNumberId: string) => {
+    setUpdating(phoneNumberId)
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/organizations/phone-numbers/${phoneNumberId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ isPrimary: true })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to set primary number')
+      }
+
+      await loadPhoneNumbers()
+
+      setAlertModal({
+        isOpen: true,
+        message: 'Primary phone number updated successfully.',
+        title: 'Success',
+        type: 'success'
+      })
+    } catch (error: any) {
+      console.error('Failed to set primary number:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to set primary number',
+        title: 'Error',
+        type: 'error'
+      })
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const handleDeleteNumber = async (phoneNumberId: string, phoneNumber: string) => {
+    setUpdating(phoneNumberId)
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/organizations/phone-numbers/${phoneNumberId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to delete phone number')
+      }
+
+      await loadPhoneNumbers()
+
+      setAlertModal({
+        isOpen: true,
+        message: `Phone number ${phoneNumber} has been deleted successfully.`,
+        title: 'Success',
+        type: 'success'
+      })
+    } catch (error: any) {
+      console.error('Failed to delete phone number:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to delete phone number',
+        title: 'Error',
+        type: 'error'
+      })
+    } finally {
+      setUpdating(null)
     }
   }
 
@@ -162,23 +233,21 @@ export default function PhoneNumbersPage() {
           <h1 className="text-3xl font-bold text-gray-900">Phone Numbers</h1>
           <p className="text-gray-600 mt-1">Manage your SMS phone numbers and their verification status</p>
         </div>
-        {!phoneNumber && (
-          <button
-            onClick={() => {
-              setConfirmModal({
-                isOpen: true,
-                title: 'Buy Phone Number',
-                message: 'This will provision a new toll-free phone number for your organization. The number will be attached to your Twilio Messaging Service and can be used for sending SMS messages.',
-                onConfirm: handleBuyNumber
-              })
-            }}
-            disabled={provisioning || loading}
-            className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            <MdAdd className="w-5 h-5" />
-            <span>{provisioning ? 'Provisioning...' : 'Buy Phone Number'}</span>
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setConfirmModal({
+              isOpen: true,
+              title: 'Buy Phone Number',
+              message: 'This will provision a new toll-free phone number for your organization. The number will be attached to your Twilio Messaging Service and can be used for sending SMS messages.',
+              onConfirm: handleBuyNumber
+            })
+          }}
+          disabled={provisioning || loading}
+          className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+        >
+          <MdAdd className="w-5 h-5" />
+          <span>{provisioning ? 'Provisioning...' : 'Buy Phone Number'}</span>
+        </button>
       </div>
 
       {loading ? (
@@ -186,51 +255,90 @@ export default function PhoneNumbersPage() {
           <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
           <p className="mt-4 text-gray-600">Loading phone numbers...</p>
         </div>
-      ) : phoneNumber ? (
+      ) : phoneNumbers.length > 0 ? (
         <div className="space-y-6">
-          {/* Phone Number Card */}
+          {/* Phone Numbers List */}
           <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-4">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <MdPhone className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">{phoneNumber.number}</h3>
-                      {getStatusBadge(phoneNumber.status)}
+            <div className="divide-y divide-gray-200">
+              {phoneNumbers.map((phoneNumber) => (
+                <div key={phoneNumber.id} className="p-6 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-4 flex-1">
+                      <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <MdPhone className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <h3 className="text-lg font-semibold text-gray-900">{phoneNumber.number}</h3>
+                          {phoneNumber.isPrimary && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              <MdStar className="w-3 h-3 mr-1" />
+                              Primary
+                            </span>
+                          )}
+                          {getStatusBadge(phoneNumber.status)}
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {getStatusDescription(phoneNumber.status)}
+                        </p>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                          <span>Type: <span className="font-medium capitalize">{phoneNumber.type}</span></span>
+                          <span>Added: {new Date(phoneNumber.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-600 mb-4">
-                      {getStatusDescription(phoneNumber.status)}
-                    </p>
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <span>Type: <span className="font-medium capitalize">{phoneNumber.type || 'Toll-Free'}</span></span>
+                    <div className="flex items-center space-x-2 ml-4">
+                      {!phoneNumber.isPrimary && (
+                        <>
+                          <button
+                            onClick={() => handleSetPrimary(phoneNumber.id)}
+                            disabled={updating === phoneNumber.id}
+                            className="p-2 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-md transition-colors disabled:opacity-50"
+                            title="Set as primary"
+                          >
+                            <MdStarBorder className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setConfirmModal({
+                                isOpen: true,
+                                title: 'Delete Phone Number',
+                                message: `Are you sure you want to delete ${phoneNumber.number}? This action cannot be undone.`,
+                                onConfirm: () => handleDeleteNumber(phoneNumber.id, phoneNumber.number)
+                              })
+                            }}
+                            disabled={updating === phoneNumber.id}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                            title="Delete number"
+                          >
+                            <MdDelete className="w-5 h-5" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={loadPhoneNumbers}
+                        disabled={loading}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                        title="Refresh status"
+                      >
+                        <MdRefresh className="w-5 h-5" />
+                      </button>
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={loadPhoneNumbers}
-                    disabled={loading}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                    title="Refresh status"
-                  >
-                    <MdRefresh className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
           {/* Information Section */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-            <h4 className="text-sm font-semibold text-blue-900 mb-2">About Phone Number Verification</h4>
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">About Phone Numbers</h4>
             <ul className="text-sm text-blue-800 space-y-2 list-disc list-inside">
-              <li>New phone numbers require verification by Twilio before they can be used for sending messages</li>
+              <li>You can have multiple phone numbers for your organization</li>
+              <li>The primary number is used as the default sender for SMS messages</li>
+              <li>New phone numbers require verification by Twilio before they can be used</li>
               <li>Verification typically takes a few minutes to a few hours</li>
-              <li>Once verified, your number will be ready to send SMS messages</li>
-              <li>You can refresh the status at any time using the refresh button</li>
+              <li>You can set any verified number as primary or delete non-primary numbers</li>
             </ul>
           </div>
         </div>

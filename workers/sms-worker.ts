@@ -100,7 +100,7 @@ try {
   async (job: Job<SMSJobData>) => {
     console.log(`[SMS-WORKER] Processing job ${job.id} for ${job.data.to}`);
     
-    const { to, message, orgId, userId, contactId, campaignId, templateId } = job.data;
+    const { to, message, orgId, userId, contactId, campaignId, templateId, fromNumber } = job.data;
     
     try {
       // Step 1: Check balance
@@ -172,11 +172,23 @@ try {
           // For production, always send to the actual recipient:
           const effectiveTo = to;
           
-          const twilioMessage = await twilioClient.messages.create({
+          // Use specific fromNumber if provided, otherwise use Messaging Service
+          const messageOptions: any = {
             body: finalMessage,
             to: effectiveTo,
-            messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
-          });
+          };
+          
+          if (fromNumber) {
+            messageOptions.from = fromNumber;
+            console.log(`[WORKER] Using specific from number: ${fromNumber}`);
+          } else if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+            messageOptions.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+            console.log(`[WORKER] Using Messaging Service`);
+          } else {
+            throw new Error('Either fromNumber or TWILIO_MESSAGING_SERVICE_SID must be provided');
+          }
+          
+          const twilioMessage = await twilioClient.messages.create(messageOptions);
           
           twilioSid = twilioMessage.sid;
           // Map Twilio statuses to our DB statuses

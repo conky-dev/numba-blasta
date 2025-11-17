@@ -405,6 +405,8 @@ class ApiClient {
       message?: string;
       templateId?: string;
       variables?: Record<string, any>;
+      categories?: string[];
+      fromNumber?: string;
     }) => {
       return this.post('/api/sms/bulk-send', data);
     },
