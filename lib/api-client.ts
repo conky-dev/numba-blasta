@@ -276,7 +276,7 @@ class ApiClient {
     },
 
     /**
-     * Import contacts from CSV
+     * Import contacts from CSV (queues background job)
      */
     import: async (
       file: File,
@@ -313,6 +313,13 @@ class ApiClient {
       }
 
       return { data, success: true };
+    },
+
+    /**
+     * Get import job status
+     */
+    importStatus: async (jobId: string) => {
+      return this.get(`/api/contacts/import/${jobId}`);
     },
 
     /**
