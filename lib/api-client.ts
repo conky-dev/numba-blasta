@@ -355,6 +355,13 @@ class ApiClient {
     },
 
     /**
+     * Get pricing information
+     */
+    getPricing: async () => {
+      return this.get('/api/billing/pricing');
+    },
+
+    /**
      * Get transaction history
      */
     getTransactions: async (params?: { limit?: number; offset?: number; type?: string }) => {

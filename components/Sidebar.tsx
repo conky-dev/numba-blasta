@@ -36,6 +36,7 @@ const menuItems = [
     submenu: [
       { name: 'Team', href: '/settings/team' },
       { name: 'Phone Numbers', href: '/settings/phone-numbers' },
+      { name: 'Pricing', href: '/settings/pricing' },
     ]
   },
 ]
