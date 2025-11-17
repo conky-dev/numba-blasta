@@ -577,7 +577,7 @@ try {
 
           // Add to batch
           valuePlaceholders.push(
-            `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5})`
+            `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, NULL)`
           );
           values.push(orgId, phone, firstName, lastName, email, category);
           paramIndex += 6;
@@ -587,9 +587,9 @@ try {
         if (valuePlaceholders.length > 0) {
           try {
             const upsertResult = await query(
-              `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category)
+              `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category, deleted_at)
                VALUES ${valuePlaceholders.join(', ')}
-               ON CONFLICT (org_id, phone) WHERE deleted_at IS NULL
+               ON CONFLICT (org_id, phone, deleted_at)
                DO UPDATE SET
                  first_name = COALESCE(EXCLUDED.first_name, contacts.first_name),
                  last_name = COALESCE(EXCLUDED.last_name, contacts.last_name),
