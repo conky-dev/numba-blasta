@@ -23,7 +23,7 @@ export default function QuickSMSPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [totalContacts, setTotalContacts] = useState(0)
   const [loadingCategories, setLoadingCategories] = useState(true)
-  const [from, setFrom] = useState('smart')
+  const [from, setFrom] = useState('')
   const [message, setMessage] = useState('')
   const [sendTime, setSendTime] = useState('now')
   const [scheduledDateTime, setScheduledDateTime] = useState('')
@@ -34,6 +34,11 @@ export default function QuickSMSPage() {
   const [showEmojiModal, setShowEmojiModal] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [sending, setSending] = useState(false)
+  const [senderInfo, setSenderInfo] = useState<{ hasNumber: boolean; number: string | null; status: string } | null>(null)
+  const [loadingSender, setLoadingSender] = useState(true)
+  const [provisioningSender, setProvisioningSender] = useState(false)
+  const [phoneNumbers, setPhoneNumbers] = useState<Array<{ id: string; number: string; status: string; isPrimary: boolean }>>([])
+  const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -74,11 +79,108 @@ export default function QuickSMSPage() {
     loadCategories()
   }, [])
 
+  // Load org sender info (toll-free / SMS number)
+  useEffect(() => {
+    const loadSender = async () => {
+      setLoadingSender(true)
+      try {
+        const response = await fetch('/api/organizations/sender', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setSenderInfo({
+            hasNumber: !!data.number,
+            number: data.number || null,
+            status: data.status || 'none'
+          })
+        } else {
+          setSenderInfo({
+            hasNumber: false,
+            number: null,
+            status: 'none'
+          })
+        }
+      } catch (error) {
+        console.error('Failed to load sender info:', error)
+        setSenderInfo({
+          hasNumber: false,
+          number: null,
+          status: 'none'
+        })
+      } finally {
+        setLoadingSender(false)
+      }
+    }
+
+    loadSender()
+  }, [])
+
+  // Load phone numbers for "From" dropdown
+  useEffect(() => {
+    const loadPhoneNumbers = async () => {
+      setLoadingPhoneNumbers(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const response = await fetch('/api/organizations/phone-numbers', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          const numbers = (data.phoneNumbers || []).filter((pn: any) => 
+            pn.status === 'verified' || pn.status === 'awaiting_verification'
+          )
+          setPhoneNumbers(numbers)
+          
+          // Set default to primary number if available, otherwise first verified number
+          if (numbers.length > 0 && !from) {
+            const primary = numbers.find((pn: any) => pn.isPrimary)
+            if (primary) {
+              setFrom(primary.number)
+            } else {
+              setFrom(numbers[0].number)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load phone numbers:', error)
+      } finally {
+        setLoadingPhoneNumbers(false)
+      }
+    }
+
+    loadPhoneNumbers()
+  }, [])
+
   // Calculate SMS segments (simple character counting)
   const charCount = message?.length || 0
   const smsCount = Math.ceil(charCount / 160) || 1
 
   const handlePreview = () => {
+    if (!senderInfo?.hasNumber) {
+      setAlertModal({
+        isOpen: true,
+        message: 'You need an SMS number before you can send messages. Click "Create SMS Number" at the top of this page.',
+        title: 'No SMS Number',
+        type: 'error'
+      })
+      return
+    }
+    if (!from) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Please select a phone number to send from',
+        title: 'Missing Information',
+        type: 'error'
+      })
+      return
+    }
     if (!message) {
       setAlertModal({
         isOpen: true,
@@ -93,6 +195,26 @@ export default function QuickSMSPage() {
   }
 
   const handleSend = async () => {
+    if (!senderInfo?.hasNumber) {
+      setAlertModal({
+        isOpen: true,
+        message: 'You need an SMS number before you can send messages. Click "Create SMS Number" at the top of this page.',
+        title: 'No SMS Number',
+        type: 'error'
+      })
+      return
+    }
+
+    if (!from) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Please select a phone number to send from',
+        title: 'Missing Information',
+        type: 'error'
+      })
+      return
+    }
+
     setShowPreview(false)
     setSending(true)
 
@@ -102,6 +224,7 @@ export default function QuickSMSPage() {
         const sendData: any = {
           message,
           categories: to, // Pass the selected categories array
+          fromNumber: from, // Always include fromNumber
         }
 
         // Add template if selected
@@ -218,9 +341,94 @@ export default function QuickSMSPage() {
     setSelectedTemplate(template)
   }
 
+  const handleCreateSenderNumber = async () => {
+    setProvisioningSender(true)
+    try {
+      const response = await fetch('/api/organizations/sender', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        setAlertModal({
+          isOpen: true,
+          message: data.error || 'Failed to create SMS number. Please try again.',
+          title: 'Provisioning Failed',
+          type: 'error'
+        })
+        return
+      }
+
+      setSenderInfo({
+        hasNumber: true,
+        number: data.number || null,
+        status: data.status || 'awaiting_verification'
+      })
+
+      setAlertModal({
+        isOpen: true,
+        message: `We provisioned a toll-free SMS number for your account: ${data.number}.\n\nStatus: ${data.status}. You can start configuring and testing now.`,
+        title: 'SMS Number Created',
+        type: 'success'
+      })
+    } catch (error: any) {
+      console.error('Failed to provision sender number:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to create SMS number. Please try again.',
+        title: 'Provisioning Failed',
+        type: 'error'
+      })
+    } finally {
+      setProvisioningSender(false)
+    }
+  }
+
   return (
     <div className="p-4 md:p-8">
       <h1 className="text-xl md:text-2xl font-semibold text-gray-800 mb-6">Quick SMS</h1>
+
+      {/* Sender number status / provisioning */}
+      <div className="mb-6">
+        {loadingSender ? (
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-600">
+            Checking your SMS number...
+          </div>
+        ) : senderInfo?.hasNumber ? (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <p className="font-medium">
+                SMS Number: <span className="font-semibold">{senderInfo.number}</span>
+              </p>
+              <p className="text-xs mt-1">
+                Status: {senderInfo.status === 'awaiting_verification' ? 'Awaiting verification' : senderInfo.status}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-900 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <p className="font-medium">You don&apos;t have an SMS number yet.</p>
+              <p className="text-xs mt-1">
+                Create a dedicated toll-free number so you can start sending messages to your contacts.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateSenderNumber}
+              disabled={provisioningSender}
+              className="inline-flex items-center justify-center px-4 py-2 rounded-md border border-yellow-400 bg-yellow-100 text-yellow-900 text-sm font-medium hover:bg-yellow-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {provisioningSender ? 'Creating...' : 'Create SMS Number'}
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col lg:flex-row space-y-6 lg:space-y-0 lg:space-x-6">
         {/* Form */}
@@ -313,15 +521,39 @@ export default function QuickSMSPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               From
             </label>
-            <select 
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="smart">Smart Senders (Recommended)</option>
-            </select>
+            {loadingPhoneNumbers ? (
+              <div className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
+                Loading phone numbers...
+              </div>
+            ) : phoneNumbers.length > 0 ? (
+              <select 
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              >
+                <option value="">Select a phone number</option>
+                {phoneNumbers.map((pn) => (
+                  <option key={pn.id} value={pn.number}>
+                    {pn.number} {pn.isPrimary ? '(Primary)' : ''} {pn.status === 'awaiting_verification' ? '(Verifying...)' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select 
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                disabled
+              >
+                <option value="">No phone numbers available</option>
+              </select>
+            )}
             <p className="mt-2 text-sm text-gray-600">
-              Messages will be sent via your Twilio Messaging Service
+              {from 
+                ? `Messages will be sent from ${from}`
+                : 'Please select a phone number to send from'
+              }
             </p>
           </div>
 

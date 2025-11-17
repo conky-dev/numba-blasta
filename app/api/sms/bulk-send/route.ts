@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { message, templateId, variables, categories } = body; // Changed category to categories (array)
+    const { message, templateId, variables, categories, fromNumber } = body; // Changed category to categories (array)
 
     // Resolve message body
     let messageBody = message;
@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
         contactId: contact.id,
         templateId: resolvedTemplateId,
         variables: variables || {},
+        fromNumber: fromNumber || undefined,
       });
     });
 

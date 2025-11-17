@@ -50,6 +50,7 @@ export interface SMSJobData {
   templateId?: string;
   campaignId?: string;
   variables?: Record<string, any>;
+  fromNumber?: string; // Specific phone number to send from
 }
 
 // Add job to queue

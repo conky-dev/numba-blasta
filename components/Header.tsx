@@ -67,37 +67,50 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
       })
       return
     }
+
+    // Minimum amount check
+    if (amount < 0.5) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Minimum amount is $0.50',
+        title: 'Invalid Amount',
+        type: 'error'
+      })
+      return
+    }
     
     try {
       setAdding(true)
-      const { data, error } = await api.billing.addFunds({
-        amount,
-        paymentMethod: 'manual',
-        description: `Added $${amount.toFixed(2)} credits`
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/billing/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ amount })
       })
-      
-      if (error) {
-        throw new Error(error)
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to create checkout session')
       }
-      
-      setBalance(data?.balance || 0)
-      setTopUpAmount('')
-      setShowBalanceModal(false)
-      setAlertModal({
-        isOpen: true,
-        message: `Successfully added $${amount.toFixed(2)} to your balance!`,
-        title: 'Success',
-        type: 'success'
-      })
+
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error('No checkout URL returned')
+      }
     } catch (error: any) {
-      console.error('Add funds error:', error)
+      console.error('Create checkout session error:', error)
       setAlertModal({
         isOpen: true,
-        message: error.message || 'Failed to add funds',
+        message: error.message || 'Failed to start payment process',
         title: 'Error',
         type: 'error'
       })
-    } finally {
       setAdding(false)
     }
   }
@@ -244,7 +257,7 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
               </button>
             </div>
             <p className="mt-4 text-xs text-gray-500 text-center">
-              Note: This is a demo. Real payment integration required for production.
+              You will be redirected to Stripe to complete your payment securely.
             </p>
           </div>
         </div>

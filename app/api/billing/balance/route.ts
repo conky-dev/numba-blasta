@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/app/api/_lib/auth-utils';
 import { query } from '@/app/api/_lib/db';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/billing/balance
  * Get current SMS balance for the organization

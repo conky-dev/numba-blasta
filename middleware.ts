@@ -14,6 +14,7 @@ export function middleware(request: NextRequest) {
     '/api/organizations',
     '/api/invitations/',
     '/api/user/org-check',
+    '/api/stripe/webhook', // Stripe webhooks don't use auth tokens
   ]
 
   // Check if route is public
