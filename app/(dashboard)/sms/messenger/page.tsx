@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { MdSearch, MdPhoneIphone, MdMoreVert, MdRefresh } from 'react-icons/md'
+import { MdSearch, MdPhoneIphone, MdMoreVert, MdRefresh, MdFilterList } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 import AlertModal from '@/components/modals/AlertModal'
 
@@ -22,8 +22,14 @@ interface Conversation {
   avatar: string
   color?: string
   hasInbound: boolean
+  category: string[]
   messages: Message[]
   messagesLoaded: boolean
+}
+
+interface Category {
+  name: string
+  count: number
 }
 
 export default function MessengerPage() {
@@ -31,6 +37,9 @@ export default function MessengerPage() {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [newMessage, setNewMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loadingCategories, setLoadingCategories] = useState(true)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [simulating, setSimulating] = useState(false)
@@ -63,7 +72,15 @@ export default function MessengerPage() {
   // Load conversations ONCE on mount
   useEffect(() => {
     loadConversations()
+    loadCategories()
   }, []) // Empty deps - only run once
+
+  // Reload conversations when category filter changes
+  useEffect(() => {
+    if (!loadingCategories) {
+      loadConversations()
+    }
+  }, [categoryFilter, loadingCategories])
 
   // Auto-refresh messages in selected conversation every 10 seconds (reduced frequency)
   useEffect(() => {
@@ -85,7 +102,10 @@ export default function MessengerPage() {
     }
     
     try {
-      const response = await api.sms.getConversations({ limit: 20 }) // Reduced from 100
+      const response = await api.sms.getConversations({ 
+        limit: 20,
+        category: categoryFilter || undefined
+      }) // Reduced from 100
       console.log('📋 Conversations API response received:', Date.now())
       
       if (response.error) {
@@ -96,6 +116,7 @@ export default function MessengerPage() {
         contactId: conv.contactId,
         name: conv.contactName,
         phone: conv.phone,
+        category: conv.category || [],
         preview: conv.lastMessage.substring(0, 50) + (conv.lastMessage.length > 50 ? '...' : ''),
         time: formatRelativeTime(conv.lastMessageAt),
         avatar: getInitials(conv.contactName),
@@ -122,6 +143,26 @@ export default function MessengerPage() {
       if (isInitialLoad) {
         setLoading(false)
       }
+    }
+  }
+
+  const loadCategories = async () => {
+    setLoadingCategories(true)
+    try {
+      const response = await fetch('/api/contacts/categories', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.categories || [])
+      }
+    } catch (error) {
+      console.error('Failed to load categories:', error)
+    } finally {
+      setLoadingCategories(false)
     }
   }
 
@@ -331,7 +372,7 @@ export default function MessengerPage() {
         {/* Header */}
         <div className="p-4 border-b border-gray-200">
           <h1 className="text-xl font-semibold text-gray-800 mb-4">Inbox</h1>
-          <div className="relative">
+          <div className="relative mb-3">
             <MdSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
@@ -340,6 +381,22 @@ export default function MessengerPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+          </div>
+          <div className="relative">
+            <MdFilterList className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={loadingCategories}
+            >
+              <option value="">All Groups</option>
+              {categories.map((cat) => (
+                <option key={cat.name} value={cat.name}>
+                  {cat.name} ({cat.count})
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
