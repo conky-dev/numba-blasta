@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      // Only process if this is an add_funds payment
+      // Handle add_funds payment
       if (session.metadata?.type === 'add_funds') {
         const orgId = session.metadata.orgId;
         const userId = session.metadata.userId;
@@ -129,6 +129,72 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           received: true,
           transactionId,
+        });
+      }
+
+      // Handle buy_phone_number payment
+      if (session.metadata?.type === 'buy_phone_number') {
+        const orgId = session.metadata.orgId;
+        const userId = session.metadata.userId;
+        const paymentIntentId = session.payment_intent as string;
+
+        if (!orgId) {
+          console.error('[STRIPE WEBHOOK] Invalid metadata for phone number purchase:', session.metadata);
+          return NextResponse.json(
+            { error: 'Invalid metadata' },
+            { status: 400 }
+          );
+        }
+
+        console.log('[STRIPE WEBHOOK] Processing phone number purchase:', {
+          orgId,
+          userId,
+          paymentIntentId,
+          sessionId: session.id,
+        });
+
+        // Import the provisioning function
+        const { provisionOrgTollFreeNumber } = await import('@/app/api/_lib/twilio-provisioning');
+
+        // Provision the phone number
+        const { phoneNumber, phoneSid } = await provisionOrgTollFreeNumber(orgId);
+
+        // Check if this is the first number (make it primary)
+        const existingCount = await query(
+          `SELECT COUNT(*) as count FROM phone_numbers WHERE org_id = $1`,
+          [orgId]
+        );
+        const isFirstNumber = existingCount.rows[0]?.count === '0';
+
+        // Store in phone_numbers table
+        await query(
+          `INSERT INTO phone_numbers (org_id, phone_number, phone_sid, type, status, is_primary, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [orgId, phoneNumber, phoneSid, 'toll-free', 'awaiting_verification', isFirstNumber, userId || null]
+        );
+
+        // Also update organizations table for backward compatibility (set as primary if first)
+        if (isFirstNumber) {
+          await query(
+            `UPDATE organizations
+             SET sms_sender_number = $1,
+                 sms_sender_status = 'awaiting_verification',
+                 updated_at = NOW()
+             WHERE id = $2`,
+            [phoneNumber, orgId]
+          );
+        }
+
+        console.log('[STRIPE WEBHOOK] Successfully provisioned phone number:', {
+          orgId,
+          phoneNumber,
+          phoneSid,
+          isPrimary: isFirstNumber,
+        });
+
+        return NextResponse.json({
+          received: true,
+          phoneNumber,
         });
       }
     }

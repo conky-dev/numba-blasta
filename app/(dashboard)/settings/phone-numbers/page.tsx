@@ -19,6 +19,7 @@ export default function PhoneNumbersPage() {
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([])
   const [loading, setLoading] = useState(true)
   const [provisioning, setProvisioning] = useState(false)
+  const [phoneNumberPrice, setPhoneNumberPrice] = useState<number | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
@@ -33,7 +34,51 @@ export default function PhoneNumbersPage() {
 
   useEffect(() => {
     loadPhoneNumbers()
+    loadPhoneNumberPrice()
+
+    // Handle Stripe redirect
+    const urlParams = new URLSearchParams(window.location.search)
+    const success = urlParams.get('success')
+    const canceled = urlParams.get('canceled')
+    const sessionId = urlParams.get('session_id')
+
+    if (success === 'true' && sessionId) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Payment successful! Your phone number is being provisioned.',
+        title: 'Payment Successful',
+        type: 'success'
+      })
+      // Refresh phone numbers
+      loadPhoneNumbers()
+      // Clean up URL
+      window.history.replaceState({}, '', '/settings/phone-numbers')
+    } else if (canceled === 'true') {
+      setAlertModal({
+        isOpen: true,
+        message: 'Payment was canceled. No charges were made.',
+        title: 'Payment Canceled',
+        type: 'info'
+      })
+      // Clean up URL
+      window.history.replaceState({}, '', '/settings/phone-numbers')
+    }
   }, [])
+
+  const loadPhoneNumberPrice = async () => {
+    try {
+      const response = await fetch('/api/billing/pricing')
+      if (response.ok) {
+        const data = await response.json()
+        const buyNumberPricing = data.pricing?.find((p: any) => p.serviceType === 'buy_phone_number')
+        if (buyNumberPricing) {
+          setPhoneNumberPrice(buyNumberPricing.pricePerUnit)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load phone number price:', error)
+    }
+  }
 
   const loadPhoneNumbers = async () => {
     setLoading(true)
@@ -68,7 +113,7 @@ export default function PhoneNumbersPage() {
     setProvisioning(true)
     try {
       const token = localStorage.getItem('auth_token')
-      const response = await fetch('/api/organizations/phone-numbers', {
+      const response = await fetch('/api/organizations/phone-numbers/checkout', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -79,26 +124,23 @@ export default function PhoneNumbersPage() {
       const data = await response.json()
 
       if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to provision phone number')
+        throw new Error(data.error || 'Failed to create checkout session')
       }
 
-      await loadPhoneNumbers()
-
-      setAlertModal({
-        isOpen: true,
-        message: `Successfully provisioned a toll-free number: ${data.phoneNumber.number}\n\nStatus: ${data.phoneNumber.status === 'awaiting_verification' ? 'Awaiting verification' : data.phoneNumber.status}. You can start using it once verification is complete.${data.phoneNumber.isPrimary ? '\n\nThis number has been set as your primary number.' : ''}`,
-        title: 'Phone Number Provisioned',
-        type: 'success'
-      })
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error('No checkout URL returned')
+      }
     } catch (error: any) {
-      console.error('Failed to provision phone number:', error)
+      console.error('Failed to create checkout session:', error)
       setAlertModal({
         isOpen: true,
-        message: error.message || 'Failed to provision phone number. Please try again.',
-        title: 'Provisioning Failed',
+        message: error.message || 'Failed to start payment process. Please try again.',
+        title: 'Checkout Failed',
         type: 'error'
       })
-    } finally {
       setProvisioning(false)
     }
   }
@@ -238,7 +280,7 @@ export default function PhoneNumbersPage() {
             setConfirmModal({
               isOpen: true,
               title: 'Buy Phone Number',
-              message: 'This will provision a new toll-free phone number for your organization. The number will be attached to your Twilio Messaging Service and can be used for sending SMS messages.',
+              message: `This will purchase a new toll-free phone number for your organization${phoneNumberPrice ? ` for $${phoneNumberPrice.toFixed(2)}` : ''}. The number will be attached to your Twilio Messaging Service and can be used for sending SMS messages.`,
               onConfirm: handleBuyNumber
             })
           }}
@@ -246,7 +288,14 @@ export default function PhoneNumbersPage() {
           className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
           <MdAdd className="w-5 h-5" />
-          <span>{provisioning ? 'Provisioning...' : 'Buy Phone Number'}</span>
+          <span>
+            {provisioning 
+              ? 'Processing...' 
+              : phoneNumberPrice 
+                ? `Buy Phone Number ($${phoneNumberPrice.toFixed(2)})`
+                : 'Buy Phone Number'
+            }
+          </span>
         </button>
       </div>
 
