@@ -27,6 +27,15 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
+  const [importJobId, setImportJobId] = useState<string | null>(null)
+  const [importProgress, setImportProgress] = useState<{
+    total: number
+    processed: number
+    created: number
+    updated: number
+    skipped: number
+    errors: string[]
+  } | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
@@ -38,8 +47,11 @@ export default function ContactsPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('Other')
   const [newCategoryInput, setNewCategoryInput] = useState<string>('')
+  const [importNewCategoryInput, setImportNewCategoryInput] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const itemsPerPage = 15
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([])
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({})
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -334,39 +346,108 @@ export default function ContactsPage() {
     })
   }
 
-  const handleImport = async (file: File) => {
+  const handleImport = async (file: File, mapping?: Record<string, string>) => {
     setImporting(true)
+    setImportProgress(null)
 
     try {
-      const { data, error } = await api.contacts.import(file, selectedCategory)
+      // Queue the import job
+      const { data, error } = await api.contacts.import(file, selectedCategory, mapping)
 
       if (error) {
         throw new Error(error)
       }
 
-      const results = data?.results
-      
-      setAlertModal({
-        isOpen: true,
-        message: `Import completed!\n\nCreated: ${results?.created || 0}\nUpdated: ${results?.updated || 0}\nSkipped: ${results?.skipped || 0}\n\nAll contacts assigned to category: ${selectedCategory}\n\n${results?.errors?.length > 0 ? `Errors: ${results.errors.slice(0, 5).join(', ')}${results.errors.length > 5 ? '...' : ''}` : ''}`,
-        title: 'Import Complete',
-        type: results?.skipped === 0 ? 'success' : 'info'
+      const { jobId, totalRows } = data
+      setImportJobId(jobId)
+      setImportProgress({
+        total: totalRows,
+        processed: 0,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: []
       })
       
-      // Refresh contacts list and categories
-      setCurrentPage(1)
-      await fetchContacts(1)
-      await loadCategories()
+      // Close import modal and show progress
+      setShowImportModal(false)
+
+      // Poll for job status
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await api.contacts.importStatus(jobId)
+          
+          if (statusResponse.error) {
+            clearInterval(pollInterval)
+            throw new Error(statusResponse.error)
+          }
+
+          const { state, progress, failedReason } = statusResponse.data
+
+          // Update progress
+          if (progress) {
+            setImportProgress(progress)
+          }
+
+          // Check if job is done
+          if (state === 'completed') {
+            clearInterval(pollInterval)
+            setImporting(false)
+            setImportJobId(null)
+            
+            setAlertModal({
+              isOpen: true,
+              message: `Import completed!\n\nCreated: ${progress.created}\nUpdated: ${progress.updated}\nSkipped: ${progress.skipped}\n\nAll contacts assigned to category: ${selectedCategory}${progress.errors.length > 0 ? `\n\nErrors: ${progress.errors.slice(0, 3).join(', ')}${progress.errors.length > 3 ? '...' : ''}` : ''}`,
+              title: 'Import Complete',
+              type: progress.skipped === 0 ? 'success' : 'info'
+            })
+            
+            // Refresh contacts list and categories
+            setCurrentPage(1)
+            await fetchContacts(1)
+            await loadCategories()
+          } else if (state === 'failed') {
+            clearInterval(pollInterval)
+            setImporting(false)
+            setImportJobId(null)
+            setImportProgress(null)
+            
+            setAlertModal({
+              isOpen: true,
+              message: failedReason || 'Import failed for unknown reason',
+              title: 'Import Failed',
+              type: 'error'
+            })
+          }
+        } catch (pollError: any) {
+          clearInterval(pollInterval)
+          console.error('Poll error:', pollError)
+          setImporting(false)
+          setImportJobId(null)
+          setImportProgress(null)
+          
+          setAlertModal({
+            isOpen: true,
+            message: pollError.message || 'Failed to check import status',
+            title: 'Import Error',
+            type: 'error'
+          })
+        }
+      }, 2000) // Poll every 2 seconds
+
     } catch (error: any) {
       console.error('Import error:', error)
+      setImporting(false)
+      setImportJobId(null)
+      setImportProgress(null)
+      
       setAlertModal({
         isOpen: true,
-        message: error.message || 'Failed to import contacts',
+        message: error.message || 'Failed to start import',
         title: 'Import Error',
         type: 'error'
       })
     } finally {
-      setImporting(false)
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
@@ -378,14 +459,59 @@ export default function ContactsPage() {
     const file = event.target.files?.[0]
     if (!file) return
     
-    // Store file and show confirmation modal
+    // Read first line to get CSV headers for mapping UI
+    try {
+      const text = await file.text()
+      const [firstLine] = text.split(/\r?\n/)
+      if (firstLine) {
+        const rawHeaders = firstLine.split(',').map(h => h.trim()).filter(h => h.length > 0)
+        // Normalize headers same way as backend (lowercase, underscores)
+        const normalizedHeaders = rawHeaders.map(h =>
+          h.toLowerCase().trim().replace(/\s+/g, '_')
+        )
+        setCsvHeaders(normalizedHeaders)
+
+        // Guess default mapping
+        const initialMapping: Record<string, string> = {}
+        normalizedHeaders.forEach(h => {
+          if (h.includes('phone')) initialMapping[h] = 'phone'
+          else if (h.includes('first') && h.includes('name')) initialMapping[h] = 'first_name'
+          else if (h.includes('last') && h.includes('name')) initialMapping[h] = 'last_name'
+          else if (h.includes('email')) initialMapping[h] = 'email'
+          else initialMapping[h] = 'ignore'
+        })
+        setFieldMapping(initialMapping)
+      } else {
+        setCsvHeaders([])
+        setFieldMapping({})
+      }
+    } catch (err) {
+      console.error('Failed to read CSV headers:', err)
+      setCsvHeaders([])
+      setFieldMapping({})
+    }
+
+    // Store file and show confirmation / mapping modal
     setPendingFile(file)
     setShowImportModal(true)
   }
 
   const handleConfirmImport = async () => {
     if (!pendingFile) return
-    await handleImport(pendingFile)
+    
+    // Ensure exactly one column is mapped to phone
+    const mappedPhones = Object.values(fieldMapping).filter(v => v === 'phone').length
+    if (mappedPhones !== 1) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Please map exactly one column to "Phone" before importing.',
+        title: 'Mapping Required',
+        type: 'error'
+      })
+      return
+    }
+
+    await handleImport(pendingFile, fieldMapping)
     setPendingFile(null)
     setShowImportModal(false)
   }
@@ -397,6 +523,7 @@ export default function ContactsPage() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
+    setImportNewCategoryInput('')
   }
 
   const getContactName = (contact: Contact) => {
@@ -447,6 +574,44 @@ export default function ContactsPage() {
         className="hidden"
       />
 
+      {/* Import Progress Indicator */}
+      {importing && importProgress && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-blue-900">Importing Contacts...</h3>
+            <span className="text-xs text-blue-700">
+              {importProgress.processed} / {importProgress.total}
+            </span>
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="w-full bg-blue-100 rounded-full h-2.5 mb-3">
+            <div
+              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+              style={{
+                width: `${(importProgress.processed / importProgress.total) * 100}%`
+              }}
+            />
+          </div>
+          
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3 text-xs">
+            <div className="text-center">
+              <div className="font-semibold text-green-700">{importProgress.created}</div>
+              <div className="text-gray-600">Created</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-blue-700">{importProgress.updated}</div>
+              <div className="text-gray-600">Updated</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-yellow-700">{importProgress.skipped}</div>
+              <div className="text-gray-600">Skipped</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Search */}
       <div className="mb-6">
         <input
@@ -481,6 +646,9 @@ export default function ContactsPage() {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                       Email
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                      Categories
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                       Status
@@ -518,6 +686,22 @@ export default function ContactsPage() {
                           <div className="flex items-center text-sm text-gray-900">
                             <MdEmail className="w-4 h-4 mr-2 text-gray-400" />
                             {contact.email}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                        {contact.category && contact.category.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {contact.category.map((cat) => (
+                              <span
+                                key={cat}
+                                className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-xs font-medium text-gray-700"
+                              >
+                                {cat}
+                              </span>
+                            ))}
                           </div>
                         ) : (
                           <span className="text-sm text-gray-400">—</span>
@@ -790,6 +974,46 @@ export default function ContactsPage() {
                 </p>
               </div>
 
+              {/* CSV Column Mapping */}
+              {csvHeaders.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Map CSV Columns
+                  </label>
+                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-md divide-y divide-gray-100">
+                    {csvHeaders.map((header) => (
+                      <div
+                        key={header}
+                        className="flex items-center justify-between px-3 py-2 bg-white"
+                      >
+                        <span className="text-xs font-mono text-gray-700 mr-2">
+                          {header}
+                        </span>
+                        <select
+                          value={fieldMapping[header] || 'ignore'}
+                          onChange={(e) =>
+                            setFieldMapping((prev) => ({
+                              ...prev,
+                              [header]: e.target.value
+                            }))
+                          }
+                          className="ml-2 px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="ignore">Ignore</option>
+                          <option value="phone">Phone (required)</option>
+                          <option value="first_name">First Name</option>
+                          <option value="last_name">Last Name</option>
+                          <option value="email">Email</option>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Make sure exactly one column is mapped to <strong>Phone</strong>.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Assign Category
@@ -813,6 +1037,51 @@ export default function ContactsPage() {
                 <p className="mt-1 text-xs text-gray-500">
                   All imported contacts will be assigned to this category
                 </p>
+                {/* Add new category on the fly for import */}
+                <div className="mt-3 flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={importNewCategoryInput}
+                    onChange={(e) => setImportNewCategoryInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        const trimmed = importNewCategoryInput.trim()
+                        if (!trimmed) return
+                        const existing = categories.find(
+                          (cat) => cat.name.toLowerCase() === trimmed.toLowerCase()
+                        )
+                        if (!existing) {
+                          setCategories([...categories, { name: trimmed, count: 0 }])
+                        }
+                        setSelectedCategory(trimmed)
+                        setImportNewCategoryInput('')
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                    placeholder="Add new category for import..."
+                    disabled={importing}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = importNewCategoryInput.trim()
+                      if (!trimmed) return
+                      const existing = categories.find(
+                        (cat) => cat.name.toLowerCase() === trimmed.toLowerCase()
+                      )
+                      if (!existing) {
+                        setCategories([...categories, { name: trimmed, count: 0 }])
+                      }
+                      setSelectedCategory(trimmed)
+                      setImportNewCategoryInput('')
+                    }}
+                    disabled={importing}
+                    className="px-3 py-2 bg-green-500 text-white text-xs font-medium rounded-md hover:bg-green-600 transition-colors disabled:opacity-50"
+                  >
+                    Add & Select
+                  </button>
+                </div>
               </div>
 
               <div className="bg-gray-50 border border-gray-200 rounded-md p-3">

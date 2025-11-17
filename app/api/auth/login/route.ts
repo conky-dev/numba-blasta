@@ -16,7 +16,9 @@ export async function POST(request: NextRequest) {
 
     // Find user in auth.users
     const authResult = await query(
-      'SELECT id, email, encrypted_password FROM auth.users WHERE email = $1',
+      `SELECT id, email, encrypted_password, email_confirmed_at
+       FROM auth.users
+       WHERE email = $1`,
       [email]
     );
 
@@ -27,15 +29,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authUser = authResult.rows[0];
+    const authUser = authResult.rows[0] as {
+      id: string;
+      email: string;
+      encrypted_password: string;
+      email_confirmed_at: string | null;
+    };
 
     // Verify password
-    const isValidPassword = await comparePassword(password, authUser.encrypted_password);
+    const isValidPassword = await comparePassword(
+      password,
+      authUser.encrypted_password
+    );
 
     if (!isValidPassword) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
+      );
+    }
+
+    // Require verified email before allowing login
+    if (!authUser.email_confirmed_at) {
+      return NextResponse.json(
+        {
+          error:
+            'Your email address has not been verified yet. Please check your inbox for the verification link.',
+        },
+        { status: 403 }
       );
     }
 

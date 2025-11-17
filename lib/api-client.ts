@@ -276,16 +276,24 @@ class ApiClient {
     },
 
     /**
-     * Import contacts from CSV
+     * Import contacts from CSV (queues background job)
      */
-    import: async (file: File, category?: string) => {
+    import: async (
+      file: File,
+      category?: string,
+      mapping?: Record<string, string>
+    ) => {
       const formData = new FormData();
       formData.append('file', file);
       if (category) {
         formData.append('category', category);
       }
+      if (mapping && Object.keys(mapping).length > 0) {
+        formData.append('mapping', JSON.stringify(mapping));
+      }
       
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const token =
+        typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       if (!token) {
         throw new Error('Authentication required');
       }
@@ -293,7 +301,7 @@ class ApiClient {
       const response = await fetch('/api/contacts/import', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: formData, // Don't set Content-Type, let browser set it with boundary
       });
@@ -305,6 +313,13 @@ class ApiClient {
       }
 
       return { data, success: true };
+    },
+
+    /**
+     * Get import job status
+     */
+    importStatus: async (jobId: string) => {
+      return this.get(`/api/contacts/import/${jobId}`);
     },
 
     /**
@@ -428,12 +443,14 @@ class ApiClient {
       limit?: number;
       offset?: number;
       search?: string;
+      category?: string;
     } = {}) => {
       const queryParams = new URLSearchParams();
       
       if (params.limit) queryParams.append('limit', params.limit.toString());
       if (params.offset) queryParams.append('offset', params.offset.toString());
       if (params.search) queryParams.append('search', params.search);
+      if (params.category) queryParams.append('category', params.category);
 
       return this.get(`/api/sms/conversations?${queryParams.toString()}`);
     },
@@ -552,6 +569,20 @@ class ApiClient {
      */
     signup: async (email: string, password: string, fullName: string) => {
       return this.post('/api/auth/signup', { email, password, fullName }, { requiresAuth: false });
+    },
+
+    /**
+     * Verify email with code
+     */
+    verifyCode: async (email: string, code: string) => {
+      return this.post('/api/auth/verify-code', { email, code }, { requiresAuth: false });
+    },
+
+    /**
+     * Resend email verification code
+     */
+    resendCode: async (email: string) => {
+      return this.post('/api/auth/resend-code', { email }, { requiresAuth: false });
     },
 
     /**

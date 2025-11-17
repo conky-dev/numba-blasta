@@ -7,7 +7,9 @@ import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { SMSJobData } from '@/app/api/_lib/sms-queue';
+import { ContactImportJobData, ContactImportJobProgress } from '@/app/api/_lib/contact-import-queue';
 import twilio from 'twilio';
+import Papa from 'papaparse';
 
 // Startup logging
 console.log('🚀 Starting SMS Worker...');
@@ -88,6 +90,8 @@ console.log('[WORKER] Creating BullMQ workers...');
 let smsWorker: Worker<SMSJobData>;
 // Create campaign worker
 let campaignWorker: Worker;
+// Create contact import worker
+let contactImportWorker: Worker<ContactImportJobData>;
 
 try {
   // SMS Worker (existing)
@@ -112,7 +116,40 @@ try {
         throw new Error(`Insufficient balance: $${balance} (need $${cost})`);
       }
       
-      // Step 2: Send SMS via Twilio (or simulate if not configured)
+      // Step 2: Decide message body (append STOP text on first send to contact)
+      let finalMessage = message;
+
+      if (contactId) {
+        try {
+          // Atomically mark that we've sent the opt-out notice if this is the first time.
+          // Only the first concurrent update will get a row back.
+          const noticeResult = await query(
+            `UPDATE contacts
+             SET opt_out_notice_sent_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1
+               AND opt_out_notice_sent_at IS NULL
+             RETURNING opt_out_notice_sent_at`,
+            [contactId]
+          );
+
+          const isFirstOutbound = noticeResult.rows.length > 0;
+
+          if (isFirstOutbound && !/stop to unsubscribe/i.test(message)) {
+            finalMessage = `${message.trim()}\n\nReply STOP to unsubscribe.`;
+            console.log(
+              `[WORKER] Appended STOP verbiage for first outbound to contact ${contactId}`
+            );
+          }
+        } catch (checkError: any) {
+          console.warn(
+            '[WORKER] Failed to check first-outbound status; sending original message:',
+            checkError?.message || checkError
+          );
+        }
+      }
+
+      // Step 3: Send SMS via Twilio (or simulate if not configured)
       let twilioSid: string | null = null;
       let twilioStatus: string = 'sent';
       
@@ -121,16 +158,23 @@ try {
         console.log(`[WORKER] 📤 Sending SMS to ${to} via Twilio`);
         
         try {
-          // 🧪 TESTING: Hardcoded TO number for safe testing
-          const testTo = '+18777804236';
-          
-          console.log(`[WORKER] 🧪 TEST MODE: Overriding recipient`);
-          console.log(`[WORKER] Original: To ${to}`);
-          console.log(`[WORKER] Testing:  To ${testTo}`);
+          // 🧪 TESTING (DISABLED):
+          // If you ever need to force all outbound traffic to a single safe test number again,
+          // you can temporarily uncomment this block. Do NOT use in production.
+          //
+          // const testTo = '+18777804236';
+          // console.log(`[WORKER] 🧪 TEST MODE: Overriding recipient`);
+          // console.log(`[WORKER] Original: To ${to}`);
+          // console.log(`[WORKER] Testing:  To ${testTo}`);
+          //
+          // const effectiveTo = testTo;
+          //
+          // For production, always send to the actual recipient:
+          const effectiveTo = to;
           
           const twilioMessage = await twilioClient.messages.create({
-            body: message,
-            to: testTo,  // Hardcoded test TO number
+            body: finalMessage,
+            to: effectiveTo,
             messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
           });
           
@@ -150,12 +194,12 @@ try {
       } else {
         // Simulation mode (for testing without Twilio)
         console.log(`[WORKER] 🔧 SIMULATION MODE: Would send to ${to}`);
-        console.log(`[WORKER] Message: ${message.substring(0, 50)}...`);
+        console.log(`[WORKER] Message: ${finalMessage.substring(0, 50)}...`);
         await new Promise(resolve => setTimeout(resolve, 100)); // Simulate delay
         twilioSid = `SIM${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
       }
       
-      // Step 3: Deduct balance and save message
+      // Step 4: Deduct balance and save message
       await query('BEGIN');
       
       try {
@@ -179,8 +223,8 @@ try {
         console.log(`[WORKER] Saving message to database:`, {
           orgId,
           to,
-          messageLength: message.length,
-          messagePreview: message.substring(0, 20)
+          messageLength: finalMessage.length,
+          messagePreview: finalMessage.substring(0, 20)
         });
         
         const insertResult = await query(
@@ -196,7 +240,7 @@ try {
             orgId,
             contactId || null,
             to,
-            message,
+            finalMessage,
             'outbound',
             twilioStatus, // Use Twilio status or 'sent'
             1, // Calculate segments later
@@ -445,6 +489,178 @@ try {
   );
 
   console.log('[WORKER] ✅ Campaign Worker created successfully');
+
+  // Contact Import Worker (new)
+  contactImportWorker = new Worker<ContactImportJobData>(
+    'contact-import',
+    async (job: Job<ContactImportJobData>) => {
+      console.log(`[IMPORT-WORKER] Processing job ${job.id} - ${job.data.csvData.length} bytes`);
+      
+      const { orgId, userId, csvData, category, mapping = {} } = job.data;
+
+      interface CSVRow {
+        [key: string]: string | undefined;
+      }
+
+      // Helper to get field value from row
+      const getFieldValue = (
+        row: CSVRow,
+        targetField: string,
+        fallbackKeys: string[]
+      ): string | undefined => {
+        const header = Object.keys(mapping).find((h) => mapping[h] === targetField);
+        if (header && row[header] != null) {
+          return row[header]!.toString().trim();
+        }
+        for (const key of fallbackKeys) {
+          if (row[key] != null) {
+            return row[key]!.toString().trim();
+          }
+        }
+        return undefined;
+      };
+
+      // Parse CSV
+      const parseResult = Papa.parse<CSVRow>(csvData, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header: string) => {
+          return header.toLowerCase().trim().replace(/\s+/g, '_');
+        },
+      });
+
+      const rows = parseResult.data as CSVRow[];
+
+      // Initialize progress
+      const progress: ContactImportJobProgress = {
+        total: rows.length,
+        processed: 0,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: [],
+      };
+
+      await job.updateProgress(progress);
+
+      const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+      const BATCH_SIZE = 500;
+
+      // Process in batches
+      for (let batchStart = 0; batchStart < rows.length; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, rows.length);
+        const batch = rows.slice(batchStart, batchEnd);
+
+        // Build multi-row upsert
+        const values: any[] = [];
+        const valuePlaceholders: string[] = [];
+        let paramIndex = 1;
+
+        for (let i = 0; i < batch.length; i++) {
+          const row = batch[i];
+          const phone = getFieldValue(row, 'phone', ['phone', 'phone_number', 'mobile']) || '';
+
+          // Skip rows without phone or invalid format
+          if (!phone || !phoneRegex.test(phone)) {
+            progress.skipped++;
+            if (!phone) {
+              progress.errors.push(`Row ${batchStart + i + 2}: Missing phone number`);
+            } else {
+              progress.errors.push(`Row ${batchStart + i + 2}: Invalid phone format: ${phone}`);
+            }
+            continue;
+          }
+
+          const firstName = getFieldValue(row, 'first_name', ['first_name', 'firstname', 'first']) || null;
+          const lastName = getFieldValue(row, 'last_name', ['last_name', 'lastname', 'last']) || null;
+          const email = getFieldValue(row, 'email', ['email', 'email_address']) || null;
+
+          // Add to batch
+          valuePlaceholders.push(
+            `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, NULL)`
+          );
+          values.push(orgId, phone, firstName, lastName, email, category);
+          paramIndex += 6;
+        }
+
+        // Execute batch upsert if we have values
+        if (valuePlaceholders.length > 0) {
+          try {
+            const upsertResult = await query(
+              `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category, deleted_at)
+               VALUES ${valuePlaceholders.join(', ')}
+               ON CONFLICT (org_id, phone, deleted_at)
+               DO UPDATE SET
+                 first_name = COALESCE(EXCLUDED.first_name, contacts.first_name),
+                 last_name = COALESCE(EXCLUDED.last_name, contacts.last_name),
+                 email = COALESCE(EXCLUDED.email, contacts.email),
+                 category = array(SELECT DISTINCT unnest(contacts.category || EXCLUDED.category)),
+                 updated_at = NOW()
+               RETURNING (xmax = 0) AS inserted`,
+              values
+            );
+
+            // Count inserts vs updates
+            for (const row of upsertResult.rows) {
+              if (row.inserted) {
+                progress.created++;
+              } else {
+                progress.updated++;
+              }
+            }
+          } catch (error: any) {
+            console.error(`[IMPORT-WORKER] Batch error:`, error);
+            progress.skipped += valuePlaceholders.length;
+            progress.errors.push(`Batch ${batchStart}-${batchEnd}: ${error.message}`);
+          }
+        }
+
+        progress.processed = batchEnd;
+        await job.updateProgress(progress);
+
+        // Log progress every 1000 contacts
+        if (progress.processed % 1000 === 0) {
+          console.log(
+            `[IMPORT-WORKER] Progress: ${progress.processed}/${progress.total} ` +
+            `(created: ${progress.created}, updated: ${progress.updated}, skipped: ${progress.skipped})`
+          );
+        }
+      }
+
+      // Refresh materialized view for category counts
+      try {
+        await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
+        console.log('[IMPORT-WORKER] ✅ Refreshed category counts view');
+      } catch (error) {
+        console.warn('[IMPORT-WORKER] Failed to refresh category counts view:', error);
+      }
+
+      console.log(
+        `[IMPORT-WORKER] ✅ Completed job ${job.id}: ` +
+        `${progress.created} created, ${progress.updated} updated, ${progress.skipped} skipped`
+      );
+
+      return progress;
+    },
+    {
+      connection: connection.duplicate(),
+      concurrency: 2, // Process 2 imports at a time
+    }
+  );
+
+  contactImportWorker.on('completed', (job, result) => {
+    const progress = result as ContactImportJobProgress;
+    console.log(
+      `[IMPORT-WORKER] ✅ Job ${job.id} completed: ` +
+      `${progress.created} created, ${progress.updated} updated, ${progress.skipped} skipped`
+    );
+  });
+
+  contactImportWorker.on('failed', (job, err) => {
+    console.error(`[IMPORT-WORKER] ❌ Job ${job?.id} failed:`, err.message);
+  });
+
+  console.log('[WORKER] ✅ Contact Import Worker created successfully');
 } catch (error: any) {
   console.error('[WORKER] ❌ FATAL: Failed to create workers:', error);
   console.error('[WORKER] Error stack:', error.stack);
@@ -497,6 +713,7 @@ process.on('SIGTERM', async () => {
   console.log('[WORKER] Shutting down...');
   await smsWorker.close();
   await campaignWorker.close();
+  await contactImportWorker.close();
   await connection.quit();
   await dbPool.end();
   process.exit(0);
@@ -506,6 +723,7 @@ process.on('SIGINT', async () => {
   console.log('[WORKER] Shutting down...');
   await smsWorker.close();
   await campaignWorker.close();
+  await contactImportWorker.close();
   await connection.quit();
   await dbPool.end();
   process.exit(0);

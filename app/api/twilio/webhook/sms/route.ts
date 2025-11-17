@@ -8,6 +8,12 @@ import { query } from '@/app/api/_lib/db';
  * https://www.twilio.com/docs/messaging/guides/webhook-request
  */
 export async function POST(request: NextRequest) {
+  // Declare variables at the top so they're available in catch block
+  let messageSid: string | undefined;
+  let from: string | undefined;
+  let to: string | undefined;
+  let body: string | undefined;
+  
   try {
     const formData = await request.formData();
 
@@ -60,10 +66,10 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     // Extract Twilio webhook parameters (now trusted)
     // -----------------------------------------------------------------------
-    const messageSid = formData.get('MessageSid') as string;
-    const from = formData.get('From') as string; // Contact's phone number
-    const to = formData.get('To') as string; // Your Twilio number
-    const body = formData.get('Body') as string;
+    messageSid = formData.get('MessageSid') as string;
+    from = formData.get('From') as string; // Contact's phone number (E.164 from Twilio)
+    to = formData.get('To') as string; // Your Twilio number
+    body = formData.get('Body') as string;
     const numSegments = parseInt(
       ((formData.get('NumSegments') as string) || '1') as string,
       10
@@ -76,14 +82,26 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Missing parameters', { status: 400 });
     }
 
-    // Find the contact by phone number
+    // -----------------------------------------------------------------------
+    // Normalize phone and find the contact
+    // We compare on the last 10 digits so formats like:
+    //   "+1 (480) 510-9369" and "480-510-9369" both match.
+    // -----------------------------------------------------------------------
+    const normalizeToLast10 = (phone: string) => {
+      const digits = phone.replace(/\D/g, '');
+      return digits.slice(-10);
+    };
+
+    const normalizedFrom10 = normalizeToLast10(from);
+
+    // Find the contact by normalized 10-digit phone number
     const contactResult = await query(
       `SELECT id, org_id, first_name, last_name 
        FROM contacts 
-       WHERE phone = $1 
+       WHERE RIGHT(regexp_replace(phone, '\\D', '', 'g'), 10) = $1 
        AND deleted_at IS NULL
        LIMIT 1`,
-      [from]
+      [normalizedFrom10]
     );
 
     let contactId = null;
@@ -93,12 +111,38 @@ export async function POST(request: NextRequest) {
       contactId = contactResult.rows[0].id;
       orgId = contactResult.rows[0].org_id;
     } else {
-      // Contact not found - you could auto-create or just log it
+      // Contact not found - just log and return empty success
       console.warn(`⚠️  Inbound message from unknown number: ${from}`);
-      
-      // For now, just store it without a contact/org association
-      // In production, you'd want to handle this better
-      return new NextResponse('Contact not found', { status: 200 }); // Still return 200 to Twilio
+      return new NextResponse(null, { status: 204 });
+    }
+
+    // If the message body is a STOP request, mark contact as opted out
+    const normalizedBody = body.trim().toLowerCase();
+    const isStop =
+      normalizedBody === 'stop' ||
+      normalizedBody === 'stop.' ||
+      normalizedBody === 'stop!' ||
+      normalizedBody === 'stop\n';
+
+    if (isStop && contactId) {
+      console.log('🚫 STOP received, marking contact as opted out:', { contactId, from });
+      await query(
+        `UPDATE contacts
+         SET opted_out_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [contactId]
+      );
+
+      // Refresh materialized view so category counts (Quick SMS) reflect opt-out
+      try {
+        await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
+      } catch (refreshError: any) {
+        console.warn(
+          '[Twilio Webhook] Failed to refresh contact_category_counts after STOP:',
+          refreshError?.message || refreshError
+        );
+      }
     }
 
     // Insert the inbound message into the database
@@ -132,13 +176,63 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Inbound message saved to database');
 
-    // Respond to Twilio (must be 200 OK or Twilio will retry)
-    return new NextResponse('Message received', { status: 200 });
+    // Respond to Twilio with no auto-reply SMS (no TwiML Message)
+    // 204 No Content is enough to tell Twilio the webhook was handled.
+    return new NextResponse(null, { status: 204 });
   } catch (error: any) {
-    console.error('❌ Twilio webhook error:', error);
+    // Log as ERROR with full details - Vercel will flag this in monitoring
+    console.error('[Twilio Webhook] ❌ CRITICAL ERROR:', {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      twilioData: {
+        messageSid,
+        from,
+        to,
+        bodyPreview: body?.substring(0, 50)
+      }
+    });
     
-    // Still return 200 to Twilio to prevent retries
-    return new NextResponse('Error processing message', { status: 200 });
+    // Also log a structured error for Vercel's error tracking
+    console.error(JSON.stringify({
+      level: 'error',
+      event: 'twilio_webhook_failure',
+      error: error.message,
+      messageSid,
+      from,
+      timestamp: new Date().toISOString()
+    }));
+    
+    // Send SMS alert to admin about webhook failure
+    try {
+      const alertNumber = '+14805109369';
+      const fullErrorLog = `🚨 Webhook Error
+
+From: ${from || 'unknown'}
+Error: ${error.message}
+Code: ${error.code || 'N/A'}
+Stack: ${error.stack?.split('\n').slice(0, 3).join('\n') || 'N/A'}
+Time: ${new Date().toLocaleString()}`;
+      
+      // Truncate to 1600 chars (Twilio max)
+      const errorMessage = fullErrorLog.substring(0, 1600);
+      
+      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_MESSAGING_SERVICE_SID) {
+        const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        await twilioClient.messages.create({
+          body: errorMessage,
+          to: alertNumber,
+          messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+        });
+        console.log('[Twilio Webhook] 📱 Error alert SMS sent to admin');
+      }
+    } catch (alertError: any) {
+      // Don't let alert failures break the webhook response
+      console.error('[Twilio Webhook] Failed to send error alert SMS:', alertError.message);
+    }
+    
+    // Still return an empty 200 to Twilio to prevent retries, but no auto-reply
+    return new NextResponse(null, { status: 200 });
   }
 }
 
