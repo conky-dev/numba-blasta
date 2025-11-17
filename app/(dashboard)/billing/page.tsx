@@ -95,7 +95,16 @@ export default function BillingPage() {
         throw new Error(error)
       }
       
-      setTransactions(data?.transactions || [])
+      // Parse numeric fields from database (they come as strings)
+      const parsedTransactions = (data?.transactions || []).map((txn: any) => ({
+        ...txn,
+        amount: parseFloat(txn.amount?.toString() || '0'),
+        balance_before: parseFloat(txn.balance_before?.toString() || '0'),
+        balance_after: parseFloat(txn.balance_after?.toString() || '0'),
+        sms_count: txn.sms_count ? parseInt(txn.sms_count.toString()) : undefined,
+        cost_per_sms: txn.cost_per_sms ? parseFloat(txn.cost_per_sms.toString()) : undefined,
+      }))
+      setTransactions(parsedTransactions)
       setPagination({
         ...pagination,
         total: data?.pagination?.total || 0,
