@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     
     const search = searchParams.get('search') || '';
+    const category = searchParams.get('category') || ''; // Filter by category
     const limit = parseInt(searchParams.get('limit') || '20'); // Default 20 per page
     const offset = parseInt(searchParams.get('offset') || '0'); // Default offset 0
     const cursor = searchParams.get('cursor'); // Legacy cursor support
@@ -44,6 +45,13 @@ export async function GET(request: NextRequest) {
         email ILIKE $${paramIndex}
       )`;
       params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    // Category filter (array overlap)
+    if (category) {
+      sqlQuery += ` AND category && ARRAY[$${paramIndex}]::TEXT[]`;
+      params.push(category);
       paramIndex++;
     }
 
@@ -82,20 +90,34 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total count for this org (for offset-based pagination)
-    const countResult = await query(
-      `SELECT COUNT(*)::integer as total
-       FROM contacts
-       WHERE org_id = $1 
-         AND deleted_at IS NULL
-         AND opted_out_at IS NULL
-       ${search ? `AND (
-         first_name ILIKE $2 OR
-         last_name ILIKE $2 OR
-         phone ILIKE $2 OR
-         email ILIKE $2
-       )` : ''}`,
-      search ? [orgId, `%${search}%`] : [orgId]
-    );
+    let countQuery = `
+      SELECT COUNT(*)::integer as total
+      FROM contacts
+      WHERE org_id = $1 
+        AND deleted_at IS NULL
+        AND opted_out_at IS NULL
+    `;
+    const countParams: any[] = [orgId];
+    let countParamIndex = 2;
+
+    if (search) {
+      countQuery += ` AND (
+        first_name ILIKE $${countParamIndex} OR
+        last_name ILIKE $${countParamIndex} OR
+        phone ILIKE $${countParamIndex} OR
+        email ILIKE $${countParamIndex}
+      )`;
+      countParams.push(`%${search}%`);
+      countParamIndex++;
+    }
+
+    if (category) {
+      countQuery += ` AND category && ARRAY[$${countParamIndex}]::TEXT[]`;
+      countParams.push(category);
+      countParamIndex++;
+    }
+
+    const countResult = await query(countQuery, countParams);
 
     return NextResponse.json({
       contacts,

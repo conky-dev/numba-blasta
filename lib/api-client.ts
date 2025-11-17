@@ -224,9 +224,10 @@ class ApiClient {
     /**
      * List all contacts
      */
-    list: async (params?: { search?: string; limit?: number; cursor?: string; offset?: number }) => {
+    list: async (params?: { search?: string; category?: string; limit?: number; cursor?: string; offset?: number }) => {
       const queryParams = new URLSearchParams();
       if (params?.search) queryParams.append('search', params.search);
+      if (params?.category) queryParams.append('category', params.category);
       if (params?.limit) queryParams.append('limit', params.limit.toString());
       if (params?.cursor) queryParams.append('cursor', params.cursor);
       if (params?.offset !== undefined) queryParams.append('offset', params.offset.toString());

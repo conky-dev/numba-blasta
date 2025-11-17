@@ -41,10 +41,12 @@ export default function ContactsPage() {
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalContacts, setTotalContacts] = useState(0)
   const [categories, setCategories] = useState<Category[]>([])
+  const [loadingCategories, setLoadingCategories] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string>('Other')
   const [newCategoryInput, setNewCategoryInput] = useState<string>('')
   const [importNewCategoryInput, setImportNewCategoryInput] = useState<string>('')
@@ -71,14 +73,14 @@ export default function ContactsPage() {
   })
 
   useEffect(() => {
-    // Reset to page 1 when search changes
+    // Reset to page 1 when search or category filter changes
     setCurrentPage(1)
-  }, [searchTerm])
+  }, [searchTerm, categoryFilter])
 
   useEffect(() => {
-    // Fetch contacts when page or search changes
+    // Fetch contacts when page, search, or category filter changes
     fetchContacts(currentPage)
-  }, [currentPage, searchTerm])
+  }, [currentPage, searchTerm, categoryFilter])
 
   useEffect(() => {
     // Load categories once
@@ -86,6 +88,7 @@ export default function ContactsPage() {
   }, [])
 
   const loadCategories = async () => {
+    setLoadingCategories(true)
     try {
       const response = await fetch('/api/contacts/categories', {
         headers: {
@@ -99,6 +102,8 @@ export default function ContactsPage() {
       }
     } catch (error) {
       console.error('Failed to load categories:', error)
+    } finally {
+      setLoadingCategories(false)
     }
   }
 
@@ -108,6 +113,7 @@ export default function ContactsPage() {
 
       const { data, error } = await api.contacts.list({
         search: searchTerm || undefined,
+        category: categoryFilter || undefined,
         limit: itemsPerPage,
         offset: (page - 1) * itemsPerPage,
       })
@@ -612,15 +618,32 @@ export default function ContactsPage() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="mb-6">
-        <input
-          type="text"
-          placeholder="Search contacts..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full md:w-96 px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
+      {/* Search and Filter */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <input
+            type="text"
+            placeholder="Search contacts..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+        <div className="w-full sm:w-64">
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={loadingCategories}
+          >
+            <option value="">All Groups</option>
+            {categories.map((cat) => (
+              <option key={cat.name} value={cat.name}>
+                {cat.name} ({cat.count})
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Loading State */}
