@@ -72,7 +72,7 @@ export async function GET(
     }
 
     if (result.rows.length === 0) {
-      console.log('❌ No invitation found for code:', code.toUpperCase());
+      console.log('❌ No invitation found  for code:', code.toUpperCase());
       return NextResponse.json(
         { error: 'Invalid invitation code', valid: false },
         { status: 404 }
