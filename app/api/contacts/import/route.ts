@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/app/api/_lib/auth-utils';
-import { query } from '@/app/api/_lib/db';
+import { queueContactImport } from '@/app/api/_lib/contact-import-queue';
 import Papa from 'papaparse';
 
 interface CSVRow {
@@ -9,13 +9,18 @@ interface CSVRow {
 
 /**
  * POST /api/contacts/import
- * Import contacts from CSV file
+ * Queue a CSV import job for background processing
  */
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate request
-    const authResult = await authenticateRequest(request);
-    const { orgId } = authResult;
+    // Authenticate request (requires org)
+    const authResult = await authenticateRequest(request, true);
+    const { orgId, userId } = authResult;
+    
+    // orgId is guaranteed to be non-null because requiresOrg = true
+    if (!orgId) {
+      throw new Error('Organization required');
+    }
 
     // Get the form data
     const formData = await request.formData();
@@ -42,14 +47,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Read file content
-    const text = await file.text();
+    const csvData = await file.text();
 
-    // Parse CSV
-    const parseResult = Papa.parse<CSVRow>(text, {
+    // Quick validation - parse CSV to check format and count rows
+    const parseResult = Papa.parse<CSVRow>(csvData, {
       header: true,
       skipEmptyLines: true,
       transformHeader: (header: string) => {
-        // Normalize headers
         return header.toLowerCase().trim().replace(/\s+/g, '_');
       },
     });
@@ -71,7 +75,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build mapping from normalized header -> field name (phone, first_name, etc.)
+    // Parse field mapping
     let fieldMapping: Record<string, string> = {};
     if (mappingJson) {
       try {
@@ -82,134 +86,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const getFieldValue = (
-      row: CSVRow,
-      targetField: string,
-      fallbackKeys: string[]
-    ): string | undefined => {
-      const header = Object.keys(fieldMapping).find(
-        (h) => fieldMapping[h] === targetField
-      );
-      if (header && row[header] != null) {
-        return row[header]!.toString().trim();
-      }
-      for (const key of fallbackKeys) {
-        if (row[key] != null) {
-          return row[key]!.toString().trim();
-        }
-      }
-      return undefined;
-    };
-
-    // Process contacts in batches
-    const results = {
-      total: rows.length,
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      errors: [] as string[],
-    };
-
-    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const phone =
-        getFieldValue(row, 'phone', ['phone', 'phone_number', 'mobile']) || '';
-
-      // Skip rows without phone number
-      if (!phone) {
-        results.skipped++;
-        results.errors.push(`Row ${i + 2}: Missing phone number`);
-        continue;
-      }
-
-      // Validate phone format
-      if (!phoneRegex.test(phone)) {
-        results.skipped++;
-        results.errors.push(`Row ${i + 2}: Invalid phone format: ${phone}`);
-        continue;
-      }
-
-      try {
-        // Check if contact exists
-        const existingContact = await query(
-          `SELECT id, category FROM contacts 
-           WHERE org_id = $1 AND phone = $2 AND deleted_at IS NULL`,
-          [orgId, phone]
-        );
-
-        if (existingContact.rows.length > 0) {
-          const existing = existingContact.rows[0] as {
-            id: string;
-            category: string[] | null;
-          };
-
-          const existingCategories = Array.isArray(existing.category)
-            ? existing.category
-            : [];
-
-          // Merge import category with existing categories
-          const mergedCategories = Array.from(
-            new Set([...existingCategories, ...categoryArray])
-          );
-
-          await query(
-            `UPDATE contacts
-             SET first_name = COALESCE($1, first_name),
-                 last_name = COALESCE($2, last_name),
-                 email = COALESCE($3, email),
-                 category = $4,
-                 updated_at = NOW()
-             WHERE org_id = $5 AND phone = $6`,
-            [
-              getFieldValue(row, 'first_name', ['first_name', 'firstname', 'first']) || null,
-              getFieldValue(row, 'last_name', ['last_name', 'lastname', 'last']) || null,
-              getFieldValue(row, 'email', ['email', 'email_address']) || null,
-              mergedCategories,
-              orgId,
-              phone,
-            ]
-          );
-          results.updated++;
-        } else {
-          // Insert new contact
-          await query(
-            `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [
-              orgId,
-              phone,
-              getFieldValue(row, 'first_name', ['first_name', 'firstname', 'first']) || null,
-              getFieldValue(row, 'last_name', ['last_name', 'lastname', 'last']) || null,
-              getFieldValue(row, 'email', ['email', 'email_address']) || null,
-              categoryArray,
-            ]
-          );
-          results.created++;
-        }
-      } catch (error: any) {
-        console.error(`Error processing row ${i + 2}:`, error);
-        console.error(`Phone: ${phone}, Category: ${JSON.stringify(categoryArray)}`);
-        results.skipped++;
-        results.errors.push(`Row ${i + 2}: ${error.message}`);
-      }
-    }
-
-    // Refresh materialized view for category counts after bulk import
-    try {
-      await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
-    } catch (error) {
-      console.warn('Failed to refresh category counts view:', error);
-      // Non-fatal - counts will be slightly stale but still work
-    }
+    // Queue the import job
+    console.log(`[IMPORT] Queueing ${rows.length} contacts for org ${orgId}`);
+    const jobId = await queueContactImport({
+      orgId,
+      userId,
+      csvData,
+      category: categoryArray,
+      mapping: fieldMapping,
+    });
 
     return NextResponse.json({
-      message: 'Import completed',
-      results,
+      success: true,
+      jobId,
+      message: `Import queued: ${rows.length} contacts will be processed in the background`,
+      totalRows: rows.length,
     });
   } catch (error: any) {
-    console.error('Import contacts error:', error);
+    console.error('Queue import error:', error);
     
     if (error.message?.includes('token') || 
         error.message?.includes('authentication') ||

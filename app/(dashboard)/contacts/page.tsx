@@ -27,6 +27,15 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
+  const [importJobId, setImportJobId] = useState<string | null>(null)
+  const [importProgress, setImportProgress] = useState<{
+    total: number
+    processed: number
+    created: number
+    updated: number
+    skipped: number
+    errors: string[]
+  } | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
@@ -339,37 +348,106 @@ export default function ContactsPage() {
 
   const handleImport = async (file: File, mapping?: Record<string, string>) => {
     setImporting(true)
+    setImportProgress(null)
 
     try {
+      // Queue the import job
       const { data, error } = await api.contacts.import(file, selectedCategory, mapping)
 
       if (error) {
         throw new Error(error)
       }
 
-      const results = data?.results
-      
-      setAlertModal({
-        isOpen: true,
-        message: `Import completed!\n\nCreated: ${results?.created || 0}\nUpdated: ${results?.updated || 0}\nSkipped: ${results?.skipped || 0}\n\nAll contacts assigned to category: ${selectedCategory}\n\n${results?.errors?.length > 0 ? `Errors: ${results.errors.slice(0, 5).join(', ')}${results.errors.length > 5 ? '...' : ''}` : ''}`,
-        title: 'Import Complete',
-        type: results?.skipped === 0 ? 'success' : 'info'
+      const { jobId, totalRows } = data
+      setImportJobId(jobId)
+      setImportProgress({
+        total: totalRows,
+        processed: 0,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: []
       })
       
-      // Refresh contacts list and categories
-      setCurrentPage(1)
-      await fetchContacts(1)
-      await loadCategories()
+      // Close import modal and show progress
+      setShowImportModal(false)
+
+      // Poll for job status
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await api.contacts.importStatus(jobId)
+          
+          if (statusResponse.error) {
+            clearInterval(pollInterval)
+            throw new Error(statusResponse.error)
+          }
+
+          const { state, progress, failedReason } = statusResponse.data
+
+          // Update progress
+          if (progress) {
+            setImportProgress(progress)
+          }
+
+          // Check if job is done
+          if (state === 'completed') {
+            clearInterval(pollInterval)
+            setImporting(false)
+            setImportJobId(null)
+            
+            setAlertModal({
+              isOpen: true,
+              message: `Import completed!\n\nCreated: ${progress.created}\nUpdated: ${progress.updated}\nSkipped: ${progress.skipped}\n\nAll contacts assigned to category: ${selectedCategory}${progress.errors.length > 0 ? `\n\nErrors: ${progress.errors.slice(0, 3).join(', ')}${progress.errors.length > 3 ? '...' : ''}` : ''}`,
+              title: 'Import Complete',
+              type: progress.skipped === 0 ? 'success' : 'info'
+            })
+            
+            // Refresh contacts list and categories
+            setCurrentPage(1)
+            await fetchContacts(1)
+            await loadCategories()
+          } else if (state === 'failed') {
+            clearInterval(pollInterval)
+            setImporting(false)
+            setImportJobId(null)
+            setImportProgress(null)
+            
+            setAlertModal({
+              isOpen: true,
+              message: failedReason || 'Import failed for unknown reason',
+              title: 'Import Failed',
+              type: 'error'
+            })
+          }
+        } catch (pollError: any) {
+          clearInterval(pollInterval)
+          console.error('Poll error:', pollError)
+          setImporting(false)
+          setImportJobId(null)
+          setImportProgress(null)
+          
+          setAlertModal({
+            isOpen: true,
+            message: pollError.message || 'Failed to check import status',
+            title: 'Import Error',
+            type: 'error'
+          })
+        }
+      }, 2000) // Poll every 2 seconds
+
     } catch (error: any) {
       console.error('Import error:', error)
+      setImporting(false)
+      setImportJobId(null)
+      setImportProgress(null)
+      
       setAlertModal({
         isOpen: true,
-        message: error.message || 'Failed to import contacts',
+        message: error.message || 'Failed to start import',
         title: 'Import Error',
         type: 'error'
       })
     } finally {
-      setImporting(false)
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
@@ -495,6 +573,44 @@ export default function ContactsPage() {
         onChange={handleFileSelect}
         className="hidden"
       />
+
+      {/* Import Progress Indicator */}
+      {importing && importProgress && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-blue-900">Importing Contacts...</h3>
+            <span className="text-xs text-blue-700">
+              {importProgress.processed} / {importProgress.total}
+            </span>
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="w-full bg-blue-100 rounded-full h-2.5 mb-3">
+            <div
+              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+              style={{
+                width: `${(importProgress.processed / importProgress.total) * 100}%`
+              }}
+            />
+          </div>
+          
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3 text-xs">
+            <div className="text-center">
+              <div className="font-semibold text-green-700">{importProgress.created}</div>
+              <div className="text-gray-600">Created</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-blue-700">{importProgress.updated}</div>
+              <div className="text-gray-600">Updated</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-yellow-700">{importProgress.skipped}</div>
+              <div className="text-gray-600">Skipped</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="mb-6">
