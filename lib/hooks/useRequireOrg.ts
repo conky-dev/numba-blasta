@@ -46,6 +46,15 @@ export function useRequireOrg() {
           role: data.role 
         })
 
+        // If 401 Unauthorized (expired/invalid token), clear token and redirect to login
+        if (response.status === 401) {
+          console.log('❌ useRequireOrg: Token expired or invalid, clearing and redirecting to login')
+          localStorage.removeItem('auth_token')
+          router.push('/')
+          setHasOrg(false)
+          return
+        }
+
         if (!response.ok || !data.hasOrg) {
           // User has no org, redirect to onboarding
           console.log('🚀 useRequireOrg: No org found, redirecting to /onboarding')
@@ -57,8 +66,10 @@ export function useRequireOrg() {
         }
       } catch (error) {
         console.error('❌ useRequireOrg: Error checking org membership', error)
-        // On error, redirect to onboarding to be safe
-        router.push('/onboarding')
+        // On network error, clear token and redirect to login to be safe
+        console.log('❌ useRequireOrg: Network error, clearing token and redirecting to login')
+        localStorage.removeItem('auth_token')
+        router.push('/')
         setHasOrg(false)
       }
     }

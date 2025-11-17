@@ -436,12 +436,14 @@ class ApiClient {
       limit?: number;
       offset?: number;
       search?: string;
+      category?: string;
     } = {}) => {
       const queryParams = new URLSearchParams();
       
       if (params.limit) queryParams.append('limit', params.limit.toString());
       if (params.offset) queryParams.append('offset', params.offset.toString());
       if (params.search) queryParams.append('search', params.search);
+      if (params.category) queryParams.append('category', params.category);
 
       return this.get(`/api/sms/conversations?${queryParams.toString()}`);
     },

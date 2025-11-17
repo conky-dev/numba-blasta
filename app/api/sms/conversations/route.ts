@@ -14,12 +14,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
     const search = searchParams.get('search') || '';
+    const category = searchParams.get('category') || ''; // Filter by category
 
     const validLimit = Math.min(Math.max(limit, 1), 100);
     const validOffset = Math.max(offset, 0);
 
     // Build WHERE clause
-    let whereClause = 'WHERE c.org_id = $1 AND c.deleted_at IS NULL';
+    let whereClause = 'WHERE c.org_id = $1 AND c.deleted_at IS NULL AND c.opted_out_at IS NULL';
     const queryParams: any[] = [orgId];
     let paramIndex = 2;
 
@@ -34,6 +35,13 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
+    // Category filter (array overlap)
+    if (category) {
+      whereClause += ` AND c.category && ARRAY[$${paramIndex}]::TEXT[]`;
+      queryParams.push(category);
+      paramIndex++;
+    }
+
     // Get conversations ordered by most recent INBOUND message first
     const result = await query(
       `SELECT 
@@ -41,6 +49,7 @@ export async function GET(request: NextRequest) {
         c.first_name,
         c.last_name,
         c.phone,
+        c.category,
         (
           SELECT body 
           FROM sms_messages 
@@ -89,6 +98,7 @@ export async function GET(request: NextRequest) {
           ? `${row.first_name} ${row.last_name}`.trim()
           : row.first_name || row.last_name || 'Unknown',
         phone: row.phone,
+        category: row.category || [],
         lastMessage: row.last_message || '',
         lastMessageAt: row.last_message_at,
         lastMessageDirection: row.last_message_direction,

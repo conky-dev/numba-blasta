@@ -8,6 +8,12 @@ import { query } from '@/app/api/_lib/db';
  * https://www.twilio.com/docs/messaging/guides/webhook-request
  */
 export async function POST(request: NextRequest) {
+  // Declare variables at the top so they're available in catch block
+  let messageSid: string | undefined;
+  let from: string | undefined;
+  let to: string | undefined;
+  let body: string | undefined;
+  
   try {
     const formData = await request.formData();
 
@@ -60,10 +66,10 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
     // Extract Twilio webhook parameters (now trusted)
     // -----------------------------------------------------------------------
-    const messageSid = formData.get('MessageSid') as string;
-    const from = formData.get('From') as string; // Contact's phone number (E.164 from Twilio)
-    const to = formData.get('To') as string; // Your Twilio number
-    const body = formData.get('Body') as string;
+    messageSid = formData.get('MessageSid') as string;
+    from = formData.get('From') as string; // Contact's phone number (E.164 from Twilio)
+    to = formData.get('To') as string; // Your Twilio number
+    body = formData.get('Body') as string;
     const numSegments = parseInt(
       ((formData.get('NumSegments') as string) || '1') as string,
       10
@@ -200,12 +206,21 @@ export async function POST(request: NextRequest) {
     // Send SMS alert to admin about webhook failure
     try {
       const alertNumber = '+14805109369';
-      const errorMessage = `🚨 Webhook Error\n\nFrom: ${from || 'unknown'}\nError: ${error.message}\nTime: ${new Date().toLocaleString()}`;
+      const fullErrorLog = `🚨 Webhook Error
+
+From: ${from || 'unknown'}
+Error: ${error.message}
+Code: ${error.code || 'N/A'}
+Stack: ${error.stack?.split('\n').slice(0, 3).join('\n') || 'N/A'}
+Time: ${new Date().toLocaleString()}`;
+      
+      // Truncate to 1600 chars (Twilio max)
+      const errorMessage = fullErrorLog.substring(0, 1600);
       
       if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_MESSAGING_SERVICE_SID) {
         const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
         await twilioClient.messages.create({
-          body: errorMessage.substring(0, 1600), // Twilio max is 1600 chars
+          body: errorMessage,
           to: alertNumber,
           messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
         });
