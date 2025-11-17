@@ -115,12 +115,24 @@ export default function OnboardingPage() {
 
     try {
       const token = localStorage.getItem('auth_token')
-      const response = await fetch(`/api/invitations/${inviteCode.trim().toUpperCase()}/accept`, {
+      const response = await fetch(`/api/invitations/${inviteCode.trim().toUpperCase()}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       })
+
+      console.log('📡 Join org response status:', response.status)
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()))
+      
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('❌ Response is not JSON:', contentType)
+        const text = await response.text()
+        console.error('Response body:', text.substring(0, 500))
+        throw new Error('Server returned an invalid response. Please check the logs.')
+      }
 
       const data = await response.json()
 

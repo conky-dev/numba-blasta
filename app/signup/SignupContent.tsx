@@ -126,7 +126,7 @@ export default function SignupContent() {
         return;
       }
 
-      // Store auth token and user, then redirect to dashboard
+      // Store auth token and user, then redirect
       if (data?.token) {
         localStorage.setItem('auth_token', data.token);
       }
@@ -136,7 +136,13 @@ export default function SignupContent() {
 
       setShowVerifyModal(false);
 
-      router.push('/dashboard');
+      // If there's a redirect URL (e.g., from invite), use it
+      // Otherwise, go to onboarding to create/join org
+      if (redirect) {
+        router.push(redirect);
+      } else {
+        router.push('/onboarding');
+      }
     } catch (err: any) {
       console.error('Verify code error:', err);
       setAlertModal({

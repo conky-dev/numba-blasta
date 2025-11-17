@@ -12,7 +12,13 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const { code } = await params;
+    const resolvedParams = await params;
+    const code = resolvedParams.code;
+
+    console.log('🔍 [GET /api/invitations/:code] Raw params:', resolvedParams);
+    console.log('🔍 [GET /api/invitations/:code] Validating code:', code);
+    console.log('🔍 [GET /api/invitations/:code] Code type:', typeof code);
+    console.log('🔍 [GET /api/invitations/:code] Code length:', code?.length);
 
     if (!code) {
       return NextResponse.json(
@@ -24,7 +30,11 @@ export async function GET(
     // Expire old invitations first
     await query(`SELECT expire_old_invitations()`);
 
-    // Find invitation
+    // Debug: Check if ANY invitations exist
+    const allInvites = await query(`SELECT code, status, expires_at FROM organization_invitations LIMIT 5`);
+    console.log('📋 Sample of all invites in DB:', allInvites.rows);
+
+    // Find invitation (case-insensitive search)
     const result = await query(
       `SELECT 
         i.id,
@@ -40,12 +50,29 @@ export async function GET(
         u.email as inviter_email
        FROM organization_invitations i
        JOIN organizations o ON i.org_id = o.id
-       JOIN auth.users u ON i.invited_by = u.id
-       WHERE i.code = $1`,
-      [code.toUpperCase()]
+       LEFT JOIN auth.users u ON i.invited_by = u.id
+       WHERE UPPER(i.code) = UPPER($1)`,
+      [code]
     );
 
+    console.log('📊 Query result:', {
+      rowsFound: result.rows.length,
+      searchedCode: code.toUpperCase()
+    });
+
+    // Debug: Try searching without case sensitivity
     if (result.rows.length === 0) {
+      const debugResult = await query(
+        `SELECT code, status, expires_at 
+         FROM organization_invitations 
+         WHERE UPPER(code) = $1 OR code = $1`,
+        [code.toUpperCase()]
+      );
+      console.log('🔍 Debug search result:', debugResult.rows);
+    }
+
+    if (result.rows.length === 0) {
+      console.log('❌ No invitation found for code:', code.toUpperCase());
       return NextResponse.json(
         { error: 'Invalid invitation code', valid: false },
         { status: 404 }
@@ -54,8 +81,18 @@ export async function GET(
 
     const invitation = result.rows[0];
 
+    console.log('📋 Invitation found:', {
+      code: invitation.code,
+      orgName: invitation.org_name,
+      status: invitation.status,
+      max_uses: invitation.max_uses,
+      uses_count: invitation.uses_count,
+      expires_at: invitation.expires_at
+    });
+
     // Check status
     if (invitation.status !== 'pending') {
+      console.log('❌ Invitation status is not pending:', invitation.status);
       return NextResponse.json(
         { 
           error: `Invitation is ${invitation.status}`,
@@ -67,11 +104,17 @@ export async function GET(
 
     // Check uses
     if (invitation.max_uses !== -1 && invitation.uses_count >= invitation.max_uses) {
+      console.log('❌ Invitation has reached max uses:', {
+        max_uses: invitation.max_uses,
+        uses_count: invitation.uses_count
+      });
       return NextResponse.json(
         { error: 'Invitation has reached maximum uses', valid: false },
         { status: 400 }
       );
     }
+
+    console.log('✅ Invitation is valid');
 
     return NextResponse.json({
       valid: true,
@@ -79,13 +122,14 @@ export async function GET(
         code: invitation.code,
         orgName: invitation.org_name,
         role: invitation.role,
-        inviterEmail: invitation.inviter_email,
+        inviterEmail: invitation.inviter_email || 'Unknown',
         expiresAt: invitation.expires_at,
         invitedEmail: invitation.invited_email,
       },
     });
   } catch (error: any) {
-    console.error('Validate invitation error:', error);
+    console.error('❌ [GET /api/invitations/:code] Error:', error);
+    console.error('Stack:', error.stack);
     return NextResponse.json(
       { error: error.message || 'Failed to validate invitation', valid: false },
       { status: 500 }
@@ -102,10 +146,15 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }
 ) {
+  console.log('🚀 [POST /api/invitations/:code] Handler called');
+  
   try {
     // Authenticate but don't require org (user is joining their first/another org)
     const { userId, email } = await authenticateRequest(request, false);
-    const { code } = await params;
+    const resolvedParams = await params;
+    const code = resolvedParams.code;
+
+    console.log('🔐 [POST /api/invitations/:code] Authenticated:', { userId, email, code });
 
     if (!code) {
       return NextResponse.json(
@@ -117,7 +166,7 @@ export async function POST(
     // Expire old invitations first
     await query(`SELECT expire_old_invitations()`);
 
-    // Find and validate invitation
+    // Find and validate invitation (case-insensitive)
     const inviteResult = await query(
       `SELECT 
         i.id,
@@ -130,9 +179,9 @@ export async function POST(
         o.name as org_name
        FROM organization_invitations i
        JOIN organizations o ON i.org_id = o.id
-       WHERE i.code = $1
+       WHERE UPPER(i.code) = UPPER($1)
        FOR UPDATE`, // Lock row for update
-      [code.toUpperCase()]
+      [code]
     );
 
     if (inviteResult.rows.length === 0) {
