@@ -37,6 +37,35 @@ export default function BillingPage() {
   useEffect(() => {
     fetchBalance()
     fetchTransactions()
+
+    // Handle Stripe redirect
+    const urlParams = new URLSearchParams(window.location.search)
+    const success = urlParams.get('success')
+    const canceled = urlParams.get('canceled')
+    const sessionId = urlParams.get('session_id')
+
+    if (success === 'true' && sessionId) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Payment successful! Your balance has been updated.',
+        title: 'Payment Successful',
+        type: 'success'
+      })
+      // Refresh balance and transactions
+      fetchBalance()
+      fetchTransactions()
+      // Clean up URL
+      window.history.replaceState({}, '', '/billing')
+    } else if (canceled === 'true') {
+      setAlertModal({
+        isOpen: true,
+        message: 'Payment was canceled. No charges were made.',
+        title: 'Payment Canceled',
+        type: 'info'
+      })
+      // Clean up URL
+      window.history.replaceState({}, '', '/billing')
+    }
   }, [filter, pagination.offset])
 
   const fetchBalance = async () => {
