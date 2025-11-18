@@ -148,16 +148,13 @@ try {
       let costPerSms = 0;
 
       try {
-        // Check for custom rates from user_profiles
+        // Check for custom rates from organizations table
         const customRateResult = await query(
           `SELECT 
-            up.custom_rate_outbound_message,
-            up.custom_rate_outbound_message_long
-          FROM user_profiles up
-          INNER JOIN organization_members om ON om.user_id = up.user_id
-          WHERE om.org_id = $1
-            AND om.role = 'owner'
-          LIMIT 1`,
+            custom_rate_outbound_message,
+            custom_rate_outbound_message_long
+          FROM organizations
+          WHERE id = $1`,
           [orgId]
         );
 
