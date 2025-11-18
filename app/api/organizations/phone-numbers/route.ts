@@ -42,14 +42,16 @@ export async function GET(request: NextRequest) {
             
             // Try to find verification by phone number SID
             const verifications = await client.messaging.v1.tollfreeVerifications.list({
-              phoneNumberSid: row.phone_sid,
+              tollfreePhoneNumberSid: row.phone_sid,
               limit: 1,
             });
 
             if (verifications.length > 0) {
               const verification = verifications[0];
               // Map Twilio status to our status
-              if (verification.status === 'APPROVED') {
+              // Convert status to string for comparison (handles enum types)
+              const verificationStatus = String(verification.status || '');
+              if (verificationStatus === 'APPROVED' || verificationStatus === 'TWILIO_APPROVED') {
                 status = 'verified';
                 // Update database if status changed
                 if (row.status !== 'verified') {
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest) {
                     [row.id]
                   );
                 }
-              } else if (verification.status === 'REJECTED') {
+              } else if (verificationStatus === 'REJECTED' || verificationStatus === 'TWILIO_REJECTED') {
                 status = 'failed';
                 // Update database if status changed
                 if (row.status !== 'failed') {
@@ -73,7 +75,7 @@ export async function GET(request: NextRequest) {
                     [row.id]
                   );
                 }
-              } else if (verification.status === 'PENDING') {
+              } else if (verificationStatus === 'PENDING' || verificationStatus === 'PENDING_REVIEW') {
                 status = 'awaiting_verification';
               }
             }
