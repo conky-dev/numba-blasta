@@ -14,12 +14,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user in auth.users
+    // Normalize email to lowercase (case-insensitive login)
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Find user in auth.users (case-insensitive comparison)
     const authResult = await query(
       `SELECT id, email, encrypted_password, email_confirmed_at
        FROM auth.users
-       WHERE email = $1`,
-      [email]
+       WHERE LOWER(TRIM(email)) = $1`,
+      [normalizedEmail]
     );
 
     if (authResult.rows.length === 0) {

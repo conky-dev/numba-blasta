@@ -36,11 +36,11 @@ export async function POST(request: NextRequest) {
 
     console.log('[AUTH] Creating user account:', normalizedEmail);
 
-    // Check if user already exists in auth.users
+    // Check if user already exists in auth.users (case-insensitive comparison)
     const existingAuthUser = await query(
       `SELECT id, email_confirmed_at
        FROM auth.users
-       WHERE email = $1`,
+       WHERE LOWER(TRIM(email)) = $1`,
       [normalizedEmail]
     );
 

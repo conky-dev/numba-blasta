@@ -22,11 +22,11 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const trimmedCode = String(code).trim();
 
-    // Look up user by email
+    // Look up user by email (case-insensitive comparison)
     const userResult = await query(
       `SELECT id, email, email_confirmed_at
        FROM auth.users
-       WHERE email = $1`,
+       WHERE LOWER(TRIM(email)) = $1`,
       [normalizedEmail]
     );
 
