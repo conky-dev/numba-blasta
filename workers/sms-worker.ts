@@ -385,6 +385,7 @@ try {
         
         if (targetCategories && targetCategories.length > 0) {
           // Filter by categories using array overlap operator
+          // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
           contactsQuery = `
             SELECT id, phone, first_name, last_name, email
             FROM contacts
@@ -398,6 +399,7 @@ try {
           console.log(`[CAMPAIGN] Filtering by categories:`, targetCategories);
         } else {
           // Send to all contacts
+          // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
           contactsQuery = `
             SELECT id, phone, first_name, last_name, email
             FROM contacts

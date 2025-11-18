@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
     const BATCH_SIZE = 10000;
     
     // Build WHERE clause with optional category filter
+    // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
     let whereClause = `WHERE org_id = $1 
          AND opted_out_at IS NULL 
          AND deleted_at IS NULL`;

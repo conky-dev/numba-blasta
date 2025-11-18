@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     const validOffset = Math.max(offset, 0);
 
     // Build WHERE clause
+    // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
     let whereClause = 'WHERE c.org_id = $1 AND c.deleted_at IS NULL AND c.opted_out_at IS NULL';
     const queryParams: any[] = [orgId];
     let paramIndex = 2;
