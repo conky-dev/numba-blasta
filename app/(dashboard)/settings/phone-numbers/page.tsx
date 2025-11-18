@@ -742,7 +742,7 @@ export default function PhoneNumbersPage() {
                   value={verificationForm.legalEntityName}
                   onChange={(e) => setVerificationForm({ ...verificationForm, legalEntityName: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Gold Level Media LLC"
+                  placeholder="Your Company Name LLC"
                 />
               </div>
 
@@ -791,7 +791,7 @@ export default function PhoneNumbersPage() {
                       value={verificationForm.businessAddress}
                       onChange={(e) => setVerificationForm({ ...verificationForm, businessAddress: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="3003 N central ave"
+                      placeholder="123 Main Street"
                     />
                   </div>
                   <div>
@@ -803,7 +803,7 @@ export default function PhoneNumbersPage() {
                       value={verificationForm.businessCity}
                       onChange={(e) => setVerificationForm({ ...verificationForm, businessCity: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Phoenix"
+                      placeholder="City"
                     />
                   </div>
                   <div>
@@ -815,7 +815,7 @@ export default function PhoneNumbersPage() {
                       value={verificationForm.businessPostalCode}
                       onChange={(e) => setVerificationForm({ ...verificationForm, businessPostalCode: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="85012"
+                      placeholder="12345"
                     />
                   </div>
                   <div>
@@ -846,7 +846,7 @@ export default function PhoneNumbersPage() {
                       value={verificationForm.contactName}
                       onChange={(e) => setVerificationForm({ ...verificationForm, contactName: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Esmeralda Portillo"
+                      placeholder="John Doe"
                     />
                   </div>
                   <div>
@@ -858,7 +858,7 @@ export default function PhoneNumbersPage() {
                       value={verificationForm.contactEmail}
                       onChange={(e) => setVerificationForm({ ...verificationForm, contactEmail: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="emmy@goldlevelmarketing.com"
+                      placeholder="contact@example.com"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -870,7 +870,7 @@ export default function PhoneNumbersPage() {
                       value={verificationForm.contactPhone}
                       onChange={(e) => setVerificationForm({ ...verificationForm, contactPhone: e.target.value })}
                       className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="+14803278177"
+                      placeholder="+1234567890"
                     />
                   </div>
                 </div>
@@ -973,18 +973,6 @@ export default function PhoneNumbersPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Describe how your business will use messaging. For example: 'We send appointment reminders and order confirmations to customers who have opted in via our website.'"
                 />
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setVerificationForm({
-                      ...verificationForm,
-                      useCaseDescription: "Tech Toad is a SaaS company that uses SMS marketing to send promotional messages, product updates, and special offers to customers who have explicitly opted in through our website signup forms, checkout process, or account settings. All messages include clear opt-out instructions and are sent only to users who have provided consent."
-                    })}
-                    className="text-xs text-blue-600 hover:text-blue-800 underline"
-                  >
-                    Use example: SaaS Marketing
-                  </button>
-                </div>
               </div>
 
               {/* Message Content Examples */}
@@ -999,21 +987,6 @@ export default function PhoneNumbersPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Example: 'Hi John, your appointment is confirmed for tomorrow at 2 PM. Reply STOP to unsubscribe.'"
                 />
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-gray-500">
-                    Provide 1-2 examples of the types of messages you plan to send.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setVerificationForm({
-                      ...verificationForm,
-                      messageContentExamples: "Example 1: 'Hi! Tech Toad here. Get 20% off your first month with code WELCOME20. Limited time offer - sign up today at techtoad.com. Reply STOP to opt out.'\n\nExample 2: 'New feature alert! We just launched advanced analytics. Check it out in your dashboard. Questions? Reply HELP. Reply STOP to unsubscribe.'"
-                    })}
-                    className="text-xs text-blue-600 hover:text-blue-800 underline"
-                  >
-                    Use example: SaaS Marketing Messages
-                  </button>
-                </div>
               </div>
 
               {/* Business Registration Number (Optional) */}
