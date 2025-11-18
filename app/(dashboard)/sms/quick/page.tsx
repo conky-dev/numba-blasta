@@ -158,9 +158,34 @@ export default function QuickSMSPage() {
     loadPhoneNumbers()
   }, [])
 
-  // Calculate SMS segments (simple character counting)
+  // Calculate SMS segments (handles GSM-7 and UCS-2 encoding)
+  // Note: This is a simplified client-side approximation for UI preview only.
+  // The actual segment calculation (used for billing) happens server-side using
+  // the sms-segments-calculator library in the SMS worker.
+  const calculateSegments = (msg: string): number => {
+    if (!msg || msg.length === 0) return 0
+    
+    // Check if message contains emojis or non-GSM characters (simplified check)
+    // Emojis and many Unicode chars require UCS-2 encoding
+    const hasEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(msg)
+    const hasNonGSM = /[^\x00-\x7F\u00A0-\u00FF\u0100-\u017F]/.test(msg) && !hasEmoji
+    
+    // Smart quotes and non-breaking spaces also force UCS-2
+    const hasSmartQuotes = /['"']|['"']|[\u00A0]/.test(msg)
+    
+    const usesUCS2 = hasEmoji || hasNonGSM || hasSmartQuotes
+    
+    if (usesUCS2) {
+      // UCS-2: 70 chars single, 67 chars per segment for multi-segment
+      return msg.length <= 70 ? 1 : Math.ceil(msg.length / 67)
+    } else {
+      // GSM-7: 160 chars single, 153 chars per segment for multi-segment
+      return msg.length <= 160 ? 1 : Math.ceil(msg.length / 153)
+    }
+  }
+  
   const charCount = message?.length || 0
-  const smsCount = Math.ceil(charCount / 160) || 1
+  const smsCount = calculateSegments(message || '') || 1
 
   const handlePreview = () => {
     if (!senderInfo?.hasNumber) {

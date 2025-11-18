@@ -1,4 +1,5 @@
 import twilio from 'twilio';
+import { SegmentedMessage } from 'sms-segments-calculator';
 
 // Initialize Twilio client
 // Note: In production, each org will have their own subaccount
@@ -144,17 +145,22 @@ export function validatePhoneNumber(phone: string): { valid: boolean; error?: st
 }
 
 /**
- * Calculate SMS segments (simplified version)
- * Real calculation depends on GSM-7 vs UCS-2 encoding
+ * Calculate SMS segments using the sms-segments-calculator library
+ * This accurately handles GSM-7 and UCS-2 encoding, emojis, and special characters
+ * 
+ * Based on: https://www.twilio.com/blog/2017/03/what-the-heck-is-a-segment.html
  */
 export function calculateSMSSegments(message: string): number {
-  const length = message.length;
+  if (!message || message.length === 0) return 0;
   
-  if (length === 0) return 0;
-  if (length <= 160) return 1;
-  
-  // Multi-part messages use 153 chars per segment (7 chars for UDH header)
-  return Math.ceil(length / 153);
+  try {
+    const segmentedMessage = new SegmentedMessage(message);
+    return segmentedMessage.segments.length;
+  } catch (error) {
+    console.error('[TWILIO] Error calculating segments:', error);
+    // Fallback to simple calculation if library fails
+    return message.length <= 160 ? 1 : Math.ceil(message.length / 153);
+  }
 }
 
 /**

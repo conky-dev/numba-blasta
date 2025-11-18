@@ -8,6 +8,7 @@ import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { SMSJobData } from '@/app/api/_lib/sms-queue';
 import { ContactImportJobData, ContactImportJobProgress } from '@/app/api/_lib/contact-import-queue';
+import { calculateSMSSegments } from '@/app/api/_lib/twilio-utils';
 import twilio from 'twilio';
 import Papa from 'papaparse';
 
@@ -138,9 +139,8 @@ try {
       }
 
       // Step 2: Calculate cost based on message segments and pricing
-      // Calculate segments (1 segment = <= 160 chars, 2+ segments = > 160 chars)
-      const messageLength = finalMessage.length;
-      const segments = messageLength === 0 ? 0 : messageLength <= 160 ? 1 : Math.ceil(messageLength / 153);
+      // Use improved segment calculation that handles GSM-7 and UCS-2 encoding
+      const segments = calculateSMSSegments(finalMessage);
       const isLongMessage = segments > 1;
 
       // Fetch pricing - check for custom rates first, then fall back to pricing table
