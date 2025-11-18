@@ -103,20 +103,8 @@ try {
     const { to, message, orgId, userId, contactId, campaignId, templateId, fromNumber } = job.data;
     
     try {
-      // Step 1: Check balance
-      const balanceCheck = await query(
-        'SELECT sms_balance FROM organizations WHERE id = $1',
-        [orgId]
-      );
-      
-      const balance = parseFloat(balanceCheck.rows[0]?.sms_balance || '0');
-      const cost = 0.01; // $0.01 per message
-      
-      if (balance < cost) {
-        throw new Error(`Insufficient balance: $${balance} (need $${cost})`);
-      }
-      
-      // Step 2: Decide message body (append STOP text on first send to contact)
+      // Step 1: Decide message body (append STOP text on first send to contact)
+      // We need to do this first to calculate the correct cost
       let finalMessage = message;
 
       if (contactId) {
@@ -149,7 +137,86 @@ try {
         }
       }
 
-      // Step 3: Send SMS via Twilio (or simulate if not configured)
+      // Step 2: Calculate cost based on message segments and pricing
+      // Calculate segments (1 segment = <= 160 chars, 2+ segments = > 160 chars)
+      const messageLength = finalMessage.length;
+      const segments = messageLength === 0 ? 0 : messageLength <= 160 ? 1 : Math.ceil(messageLength / 153);
+      const isLongMessage = segments > 1;
+
+      // Fetch pricing - check for custom rates first, then fall back to pricing table
+      let costPerMessage = 0;
+      let costPerSms = 0;
+
+      try {
+        // Check for custom rates from organizations table
+        const customRateResult = await query(
+          `SELECT 
+            custom_rate_outbound_message,
+            custom_rate_outbound_message_long
+          FROM organizations
+          WHERE id = $1`,
+          [orgId]
+        );
+
+        if (customRateResult.rows.length > 0 && customRateResult.rows[0]) {
+          const customRate = isLongMessage 
+            ? customRateResult.rows[0].custom_rate_outbound_message_long
+            : customRateResult.rows[0].custom_rate_outbound_message;
+          
+          if (customRate !== null && customRate !== undefined) {
+            costPerMessage = parseFloat(customRate.toString());
+            costPerSms = costPerMessage;
+            console.log(`[WORKER] Using custom rate: $${costPerMessage} (${isLongMessage ? 'long' : 'short'} message)`);
+          }
+        }
+
+        // If no custom rate, fetch from pricing table
+        if (costPerMessage === 0) {
+          const pricingType = isLongMessage ? 'outbound_message_long' : 'outbound_message';
+          const pricingResult = await query(
+            `SELECT price_per_unit 
+             FROM pricing 
+             WHERE service_type = $1 
+               AND is_active = true 
+             LIMIT 1`,
+            [pricingType]
+          );
+
+          if (pricingResult.rows.length > 0) {
+            costPerMessage = parseFloat(pricingResult.rows[0].price_per_unit.toString());
+            costPerSms = costPerMessage;
+            console.log(`[WORKER] Using pricing table rate: $${costPerMessage} (${pricingType})`);
+          } else {
+            // Fallback to default if pricing not found
+            costPerMessage = isLongMessage ? 0.015 : 0.0075;
+            costPerSms = costPerMessage;
+            console.warn(`[WORKER] Pricing not found for ${pricingType}, using fallback: $${costPerMessage}`);
+          }
+        }
+      } catch (pricingError: any) {
+        console.error(`[WORKER] Error fetching pricing:`, pricingError.message);
+        // Fallback to default pricing
+        costPerMessage = isLongMessage ? 0.015 : 0.0075;
+        costPerSms = costPerMessage;
+        console.warn(`[WORKER] Using fallback pricing: $${costPerMessage}`);
+      }
+
+      // Total cost = cost per message (already accounts for segments in pricing)
+      const cost = costPerMessage;
+
+      // Step 3: Check balance
+      const balanceCheck = await query(
+        'SELECT sms_balance FROM organizations WHERE id = $1',
+        [orgId]
+      );
+      
+      const balance = parseFloat(balanceCheck.rows[0]?.sms_balance || '0');
+      
+      if (balance < cost) {
+        throw new Error(`Insufficient balance: $${balance.toFixed(4)} (need $${cost.toFixed(4)})`);
+      }
+
+      // Step 4: Send SMS via Twilio (or simulate if not configured)
       let twilioSid: string | null = null;
       let twilioStatus: string = 'sent';
       
@@ -211,22 +278,22 @@ try {
         twilioSid = `SIM${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
       }
       
-      // Step 4: Deduct balance and save message
+      // Step 5: Deduct balance and save message
       await query('BEGIN');
       
       try {
         // Deduct balance
-        console.log(`[WORKER] Deducting ${cost} credits for org ${orgId}`);
+        console.log(`[WORKER] Deducting $${cost.toFixed(4)} credits for org ${orgId} (${segments} segment(s), ${isLongMessage ? 'long' : 'short'} message)`);
         await query(
           `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7)`,
           [
             orgId,              // p_org_id
             cost,               // p_amount
             1,                  // p_sms_count
-            cost,               // p_cost_per_sms
+            costPerSms,         // p_cost_per_sms
             null,               // p_message_id (will set after insert)
             campaignId || null, // p_campaign_id
-            `SMS to ${to}`      // p_description
+            `SMS to ${to} (${segments} segment(s))`      // p_description
           ]
         );
         console.log(`[WORKER] Credits deducted successfully`);
@@ -255,8 +322,8 @@ try {
             finalMessage,
             'outbound',
             twilioStatus, // Use Twilio status or 'sent'
-            1, // Calculate segments later
-            1, // Cost in cents
+            segments, // Actual calculated segments
+            Math.round(cost * 100), // Cost in cents
             campaignId || null,
             templateId || null,
             userId,
