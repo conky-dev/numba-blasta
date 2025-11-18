@@ -10,6 +10,7 @@ interface Pricing {
   currency: string
   unit: string
   description: string
+  isCustomRate?: boolean
 }
 
 export default function PricingPage() {
@@ -28,7 +29,12 @@ export default function PricingPage() {
   const loadPricing = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/billing/pricing')
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/billing/pricing', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       
       if (response.ok) {
         const data = await response.json()
@@ -121,16 +127,30 @@ export default function PricingPage() {
                         <div className="text-gray-400">
                           {getServiceIcon(item.serviceType)}
                         </div>
-                        <span className="text-sm font-medium text-gray-900">
-                          {getServiceName(item.serviceType)}
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            {getServiceName(item.serviceType)}
+                          </span>
+                          {item.isCustomRate && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              Custom
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       {item.description || '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
-                      {formatPrice(item.pricePerUnit, item.currency)}
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="flex flex-col items-end">
+                        <span className="text-sm font-semibold text-gray-900">
+                          {formatPrice(item.pricePerUnit, item.currency)}
+                        </span>
+                        {item.isCustomRate && (
+                          <span className="text-xs text-blue-600 mt-0.5">Your custom rate</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       per {item.unit}
@@ -150,6 +170,11 @@ export default function PricingPage() {
           <li><strong>Outbound Message:</strong> Cost per SMS message sent (under 140 characters, single segment)</li>
           <li><strong>Outbound Message (Long):</strong> Cost per SMS message sent (over 140 characters, multiple segments)</li>
           <li><strong>Buy Phone Number:</strong> One-time purchase fee for a toll-free phone number</li>
+          {pricing.some(p => p.isCustomRate) && (
+            <li className="mt-2 pt-2 border-t border-blue-200">
+              <strong>Custom Rates:</strong> Items marked with a "Custom" badge indicate that your organization has custom pricing that overrides the default rates. These rates apply to all messages sent by your organization.
+            </li>
+          )}
         </ul>
       </div>
 
