@@ -1,4 +1,5 @@
 import twilio from 'twilio';
+import { SegmentedMessage } from 'sms-segments-calculator';
 
 // Initialize Twilio client
 // Note: In production, each org will have their own subaccount
@@ -144,25 +145,76 @@ export function validatePhoneNumber(phone: string): { valid: boolean; error?: st
 }
 
 /**
- * Calculate SMS segments (simplified version)
- * Real calculation depends on GSM-7 vs UCS-2 encoding
+ * Calculate SMS segments using the sms-segments-calculator library
+ * This accurately handles GSM-7 and UCS-2 encoding, emojis, and special characters
+ * 
+ * Based on: https://www.twilio.com/blog/2017/03/what-the-heck-is-a-segment.html
  */
 export function calculateSMSSegments(message: string): number {
-  const length = message.length;
+  if (!message || message.length === 0) return 0;
   
-  if (length === 0) return 0;
-  if (length <= 160) return 1;
-  
-  // Multi-part messages use 153 chars per segment (7 chars for UDH header)
-  return Math.ceil(length / 153);
+  try {
+    const segmentedMessage = new SegmentedMessage(message);
+    return segmentedMessage.segments.length;
+  } catch (error) {
+    console.error('[TWILIO] Error calculating segments:', error);
+    // Fallback to simple calculation if library fails
+    return message.length <= 160 ? 1 : Math.ceil(message.length / 153);
+  }
 }
 
 /**
  * Calculate SMS cost based on segments
- * Current rate: $0.01 per segment
+ * Fetches pricing from database (custom rates or pricing table)
+ * Returns cost in cents
+ * Throws error if pricing is not configured
  */
-export function calculateSMSCost(segments: number): number {
-  return segments * 1; // 1 cent per segment
+export async function calculateSMSCost(segments: number, orgId: string): Promise<number> {
+  const { query } = await import('./db');
+  
+  let costPerSegment = 0;
+
+  try {
+    // Check for custom rates first
+    const customRateResult = await query(
+      `SELECT custom_rate_outbound_message
+      FROM organizations
+      WHERE id = $1`,
+      [orgId]
+    );
+
+    if (customRateResult.rows.length > 0 && customRateResult.rows[0]) {
+      const customRate = customRateResult.rows[0].custom_rate_outbound_message;
+      
+      if (customRate !== null && customRate !== undefined) {
+        costPerSegment = parseFloat(customRate.toString());
+      }
+    }
+
+    // If no custom rate, fetch from pricing table
+    if (costPerSegment === 0) {
+      const pricingResult = await query(
+        `SELECT price_per_unit 
+         FROM pricing 
+         WHERE service_type = 'outbound_message'
+           AND is_active = true 
+         LIMIT 1`,
+        []
+      );
+
+      if (pricingResult.rows.length > 0) {
+        costPerSegment = parseFloat(pricingResult.rows[0].price_per_unit.toString());
+      } else {
+        throw new Error('Pricing not found in database. Please configure pricing in the pricing table.');
+      }
+    }
+  } catch (error: any) {
+    console.error('[TWILIO] Error fetching pricing:', error);
+    throw new Error(`Failed to fetch pricing: ${error.message}`);
+  }
+
+  // Return total cost in cents
+  return Math.round(costPerSegment * segments * 100);
 }
 
 /**

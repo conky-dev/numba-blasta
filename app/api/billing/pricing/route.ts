@@ -34,8 +34,7 @@ export async function GET(request: NextRequest) {
       const customResult = await query(
         `SELECT 
           custom_rate_inbound_message,
-          custom_rate_outbound_message,
-          custom_rate_outbound_message_long
+          custom_rate_outbound_message
         FROM organizations
         WHERE id = $1`,
         [orgId]
@@ -48,9 +47,6 @@ export async function GET(request: NextRequest) {
         }
         if (org.custom_rate_outbound_message !== null) {
           customRates['outbound_message'] = parseFloat(org.custom_rate_outbound_message.toString());
-        }
-        if (org.custom_rate_outbound_message_long !== null) {
-          customRates['outbound_message_long'] = parseFloat(org.custom_rate_outbound_message_long.toString());
         }
       }
     }

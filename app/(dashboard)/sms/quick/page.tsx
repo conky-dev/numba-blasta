@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
-import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink } from 'react-icons/md'
+import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 
 interface Template {
@@ -39,6 +39,8 @@ export default function QuickSMSPage() {
   const [provisioningSender, setProvisioningSender] = useState(false)
   const [phoneNumbers, setPhoneNumbers] = useState<Array<{ id: string; number: string; status: string; isPrimary: boolean }>>([])
   const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
+  const [costPerSegment, setCostPerSegment] = useState<number>(0)
+  const [loadingPricing, setLoadingPricing] = useState(true)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -51,6 +53,35 @@ export default function QuickSMSPage() {
     api.templates.list({ limit: 100 }).catch(() => {
       // Silently fail - modal will retry if needed
     })
+  }, [])
+
+  // Load pricing for cost estimation
+  useEffect(() => {
+    const loadPricing = async () => {
+      setLoadingPricing(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const response = await fetch('/api/billing/pricing', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          const outboundPricing = data.pricing?.find((p: any) => p.serviceType === 'outbound_message')
+          if (outboundPricing) {
+            setCostPerSegment(outboundPricing.pricePerUnit)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load pricing:', error)
+      } finally {
+        setLoadingPricing(false)
+      }
+    }
+
+    loadPricing()
   }, [])
 
   // Load contact categories with counts
@@ -158,9 +189,63 @@ export default function QuickSMSPage() {
     loadPhoneNumbers()
   }, [])
 
-  // Calculate SMS segments (simple character counting)
+  // Calculate SMS segments (handles GSM-7 and UCS-2 encoding)
+  // Note: This is a simplified client-side approximation for UI preview only.
+  // The actual segment calculation (used for billing) happens server-side using
+  // the sms-segments-calculator library in the SMS worker.
+  const GSM_7BIT_BASIC = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
+  const GSM_7BIT_EXTENDED = '|^€{}[]~\\';
+  
+  const detectEncoding = (msg: string): { encoding: 'GSM-7' | 'UCS-2', problematicChars: string[] } => {
+    const problematicChars: string[] = []
+    
+    for (const char of msg) {
+      if (!GSM_7BIT_BASIC.includes(char) && !GSM_7BIT_EXTENDED.includes(char) && char !== '\f') {
+        if (!problematicChars.includes(char)) {
+          problematicChars.push(char)
+        }
+      }
+    }
+    
+    return {
+      encoding: problematicChars.length > 0 ? 'UCS-2' : 'GSM-7',
+      problematicChars
+    }
+  }
+  
+  const calculateSegments = (msg: string): number => {
+    if (!msg || msg.length === 0) return 0
+    
+    const { encoding } = detectEncoding(msg)
+    
+    if (encoding === 'UCS-2') {
+      // UCS-2: 70 chars single, 67 chars per segment for multi-segment
+      return msg.length <= 70 ? 1 : Math.ceil(msg.length / 67)
+    } else {
+      // GSM-7: Count extended chars as 2 septets each
+      let effectiveLength = 0
+      for (const char of msg) {
+        if (GSM_7BIT_EXTENDED.includes(char) || char === '\f') {
+          effectiveLength += 2
+        } else {
+          effectiveLength += 1
+        }
+      }
+      // 160 septets single, 153 septets per segment for multi-segment
+      return effectiveLength <= 160 ? 1 : Math.ceil(effectiveLength / 153)
+    }
+  }
+  
   const charCount = message?.length || 0
-  const smsCount = Math.ceil(charCount / 160) || 1
+  const smsCount = calculateSegments(message || '') || 1
+  const encodingInfo = detectEncoding(message || '')
+  
+  // Calculate estimated cost
+  const estimatedCostPerMessage = costPerSegment * smsCount
+  const selectedContactCount = to.includes('all') 
+    ? totalContacts 
+    : categories.filter(cat => to.includes(cat.name)).reduce((sum, cat) => sum + cat.count, 0)
+  const estimatedTotalCost = estimatedCostPerMessage * selectedContactCount
 
   const handlePreview = () => {
     if (!senderInfo?.hasNumber) {
@@ -594,8 +679,67 @@ export default function QuickSMSPage() {
                 className="w-full px-4 py-3 focus:outline-none resize-none"
                 placeholder="Type your message here..."
               />
-              <div className="px-4 py-2 text-xs text-gray-500 text-right bg-gray-50">
-                {charCount} characters / {smsCount} SMS per recipient
+              <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Characters:</span>
+                    <span className="ml-1">{charCount}</span>
+                    <span className="ml-3 text-xs">
+                      <span className="font-medium">Encoding:</span>
+                      <span className={`ml-1 font-semibold ${encodingInfo.encoding === 'UCS-2' ? 'text-orange-600' : 'text-green-600'}`}>
+                        {encodingInfo.encoding}
+                      </span>
+                      <span className="ml-1 text-gray-500">
+                        ({encodingInfo.encoding === 'GSM-7' ? '160/153' : '70/67'} chars)
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-semibold text-blue-900">SMS Segments:</span>
+                    <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-md bg-blue-600 text-white text-base font-bold">
+                      {smsCount}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Cost Estimation */}
+                {!loadingPricing && costPerSegment > 0 && selectedContactCount > 0 && (
+                  <div className="pt-2 border-t border-blue-200">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        Cost per message: <span className="font-semibold text-gray-800">${estimatedCostPerMessage.toFixed(4)}</span>
+                      </span>
+                      <span className="text-gray-600">
+                        × {selectedContactCount} contact{selectedContactCount !== 1 ? 's' : ''} = 
+                        <span className="ml-1 font-bold text-blue-900 text-sm">${estimatedTotalCost.toFixed(2)}</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                {encodingInfo.encoding === 'UCS-2' && encodingInfo.problematicChars.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-orange-200 bg-orange-50 -mx-4 px-4 py-2">
+                    <div className="flex items-start space-x-2">
+                      <MdWarning className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 text-xs">
+                        <p className="font-semibold text-orange-900 mb-1">
+                          UCS-2 encoding detected - only 70 chars per segment instead of 160!
+                        </p>
+                        <p className="text-orange-800">
+                          Problematic characters: 
+                          <span className="ml-1 font-mono font-bold">
+                            {encodingInfo.problematicChars.map(char => 
+                              char === '\n' ? '\\n' : char === '\r' ? '\\r' : char
+                            ).join(', ')}
+                          </span>
+                        </p>
+                        <p className="text-orange-700 mt-1">
+                          Tip: Replace emojis, smart quotes (" "), and special characters with standard ones to use GSM-7 encoding.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -714,6 +858,9 @@ export default function QuickSMSPage() {
         sendTime={sendTime}
         charCount={charCount}
         smsCount={smsCount}
+        estimatedCostPerMessage={estimatedCostPerMessage}
+        estimatedTotalCost={estimatedTotalCost}
+        recipientCount={selectedContactCount}
       />
 
       <SelectTemplateModal

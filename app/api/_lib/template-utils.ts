@@ -1,4 +1,5 @@
 import Mustache from 'mustache';
+import { calculateSMSSegments } from './twilio-utils';
 
 /**
  * Renders a template with variables using Mustache syntax
@@ -65,11 +66,10 @@ export function previewTemplate(content: string, sampleData: Record<string, any>
   const rendered = renderTemplate(content, sampleData);
   const variables = extractTemplateVariables(content);
   
-  // Calculate SMS segments (160 chars per segment for GSM-7, 70 for Unicode)
+  // Calculate SMS segments using improved calculation (handles GSM-7 and UCS-2 encoding)
   const charCount = rendered.length;
+  const segments = calculateSMSSegments(rendered);
   const hasUnicode = /[^\x00-\x7F]/.test(rendered);
-  const maxCharsPerSegment = hasUnicode ? 70 : 160;
-  const segments = Math.ceil(charCount / maxCharsPerSegment) || 1;
   
   return {
     preview: rendered,

@@ -8,6 +8,7 @@ import IORedis from 'ioredis';
 import { Pool } from 'pg';
 import { SMSJobData } from '@/app/api/_lib/sms-queue';
 import { ContactImportJobData, ContactImportJobProgress } from '@/app/api/_lib/contact-import-queue';
+import { calculateSMSSegments } from '@/app/api/_lib/twilio-utils';
 import twilio from 'twilio';
 import Papa from 'papaparse';
 
@@ -138,71 +139,59 @@ try {
       }
 
       // Step 2: Calculate cost based on message segments and pricing
-      // Calculate segments (1 segment = <= 160 chars, 2+ segments = > 160 chars)
-      const messageLength = finalMessage.length;
-      const segments = messageLength === 0 ? 0 : messageLength <= 160 ? 1 : Math.ceil(messageLength / 153);
-      const isLongMessage = segments > 1;
+      // Use improved segment calculation that handles GSM-7 and UCS-2 encoding
+      const segments = calculateSMSSegments(finalMessage);
+
+      console.log(`[WORKER] Message segments: ${segments}`);
 
       // Fetch pricing - check for custom rates first, then fall back to pricing table
-      let costPerMessage = 0;
-      let costPerSms = 0;
+      let costPerSegment = 0;
 
       try {
         // Check for custom rates from organizations table
         const customRateResult = await query(
-          `SELECT 
-            custom_rate_outbound_message,
-            custom_rate_outbound_message_long
+          `SELECT custom_rate_outbound_message
           FROM organizations
           WHERE id = $1`,
           [orgId]
         );
 
         if (customRateResult.rows.length > 0 && customRateResult.rows[0]) {
-          const customRate = isLongMessage 
-            ? customRateResult.rows[0].custom_rate_outbound_message_long
-            : customRateResult.rows[0].custom_rate_outbound_message;
+          const customRate = customRateResult.rows[0].custom_rate_outbound_message;
           
           if (customRate !== null && customRate !== undefined) {
-            costPerMessage = parseFloat(customRate.toString());
-            costPerSms = costPerMessage;
-            console.log(`[WORKER] Using custom rate: $${costPerMessage} (${isLongMessage ? 'long' : 'short'} message)`);
+            costPerSegment = parseFloat(customRate.toString());
+            console.log(`[WORKER] Using custom rate: $${costPerSegment}/segment`);
           }
         }
 
         // If no custom rate, fetch from pricing table
-        if (costPerMessage === 0) {
-          const pricingType = isLongMessage ? 'outbound_message_long' : 'outbound_message';
+        if (costPerSegment === 0) {
           const pricingResult = await query(
             `SELECT price_per_unit 
              FROM pricing 
-             WHERE service_type = $1 
+             WHERE service_type = 'outbound_message'
                AND is_active = true 
              LIMIT 1`,
-            [pricingType]
+            []
           );
 
           if (pricingResult.rows.length > 0) {
-            costPerMessage = parseFloat(pricingResult.rows[0].price_per_unit.toString());
-            costPerSms = costPerMessage;
-            console.log(`[WORKER] Using pricing table rate: $${costPerMessage} (${pricingType})`);
+            costPerSegment = parseFloat(pricingResult.rows[0].price_per_unit.toString());
+            console.log(`[WORKER] Using pricing table rate: $${costPerSegment}/segment`);
           } else {
-            // Fallback to default if pricing not found
-            costPerMessage = isLongMessage ? 0.015 : 0.0075;
-            costPerSms = costPerMessage;
-            console.warn(`[WORKER] Pricing not found for ${pricingType}, using fallback: $${costPerMessage}`);
+            throw new Error('Pricing not found in database. Please configure pricing in the pricing table.');
           }
         }
       } catch (pricingError: any) {
         console.error(`[WORKER] Error fetching pricing:`, pricingError.message);
-        // Fallback to default pricing
-        costPerMessage = isLongMessage ? 0.015 : 0.0075;
-        costPerSms = costPerMessage;
-        console.warn(`[WORKER] Using fallback pricing: $${costPerMessage}`);
+        throw new Error(`Failed to fetch pricing: ${pricingError.message}`);
       }
 
-      // Total cost = cost per message (already accounts for segments in pricing)
-      const cost = costPerMessage;
+      // Total cost = cost per segment × number of segments
+      const cost = costPerSegment * segments;
+      console.log(`[WORKER] Total cost: $${cost.toFixed(4)} (${segments} segments × $${costPerSegment.toFixed(4)}/segment)`);
+
 
       // Step 3: Check balance
       const balanceCheck = await query(
@@ -306,17 +295,17 @@ try {
       
       try {
         // Deduct balance
-        console.log(`[WORKER] Deducting $${cost.toFixed(4)} credits for org ${orgId} (${segments} segment(s), ${isLongMessage ? 'long' : 'short'} message)`);
+        console.log(`[WORKER] Deducting $${cost.toFixed(4)} credits for org ${orgId} (${segments} segment(s), $${costPerSegment.toFixed(4)}/segment)`);
         await query(
           `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7)`,
           [
             orgId,              // p_org_id
-            cost,               // p_amount
-            1,                  // p_sms_count
-            costPerSms,         // p_cost_per_sms
+            cost,               // p_amount (total cost)
+            segments,           // p_sms_count (number of segments)
+            costPerSegment,     // p_cost_per_sms (cost per segment)
             null,               // p_message_id (will set after insert)
             campaignId || null, // p_campaign_id
-            `SMS to ${to} (${segments} segment(s))`      // p_description
+            `SMS to ${to} (${segments} segment(s) @ $${costPerSegment.toFixed(4)}/seg)`  // p_description
           ]
         );
         console.log(`[WORKER] Credits deducted successfully`);
