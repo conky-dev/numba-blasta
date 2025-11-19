@@ -165,16 +165,54 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Calculate total_recipients based on target categories
+    let totalRecipients = 0;
+    try {
+      let contactCountQuery;
+      let contactCountParams;
+      
+      if (targetCategories && targetCategories.length > 0) {
+        // Count contacts in specific categories
+        contactCountQuery = `
+          SELECT COUNT(DISTINCT id) as total
+          FROM contacts
+          WHERE org_id = $1
+            AND deleted_at IS NULL
+            AND opted_out_at IS NULL
+            AND category && $2
+        `;
+        contactCountParams = [auth.orgId, targetCategories];
+      } else {
+        // Count all contacts
+        contactCountQuery = `
+          SELECT COUNT(id) as total
+          FROM contacts
+          WHERE org_id = $1
+            AND deleted_at IS NULL
+            AND opted_out_at IS NULL
+        `;
+        contactCountParams = [auth.orgId];
+      }
+      
+      const countResult = await query(contactCountQuery, contactCountParams);
+      totalRecipients = parseInt(countResult.rows[0]?.total || '0');
+      
+      console.log(`[CAMPAIGNS] Calculated total_recipients: ${totalRecipients}`);
+    } catch (countError) {
+      console.warn('[CAMPAIGNS] Failed to calculate total_recipients, defaulting to 0:', countError);
+      // Continue with totalRecipients = 0
+    }
+
     // Create campaign
     const result = await query(
       `INSERT INTO sms_campaigns (
-        org_id, name, message, template_id, list_id, target_categories, status, schedule_at, created_by
+        org_id, name, message, template_id, list_id, target_categories, status, schedule_at, created_by, total_recipients
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING 
         id, name, message, template_id, list_id, target_categories, status, 
-        schedule_at, created_at, updated_at`,
-      [auth.orgId, name, message || null, templateId || null, listId || null, targetCategories || null, status, scheduleAt || null, auth.userId]
+        schedule_at, total_recipients, created_at, updated_at`,
+      [auth.orgId, name, message || null, templateId || null, listId || null, targetCategories || null, status, scheduleAt || null, auth.userId, totalRecipients]
     );
 
     const campaign = result.rows[0];

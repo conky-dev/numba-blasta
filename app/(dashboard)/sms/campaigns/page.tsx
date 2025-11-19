@@ -5,6 +5,7 @@ import { MdEdit, MdDelete, MdContentCopy, MdPlayArrow, MdPause, MdSend, MdSchedu
 import CreateCampaignModal from '@/components/modals/CreateCampaignModal'
 import EditCampaignModal from '@/components/modals/EditCampaignModal'
 import ScheduleCampaignModal from '@/components/modals/ScheduleCampaignModal'
+import ViewCampaignModal from '@/components/modals/ViewCampaignModal'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import { api } from '@/lib/api-client'
@@ -42,6 +43,8 @@ export default function CampaignsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [showViewModal, setShowViewModal] = useState(false)
+  const [viewingCampaignId, setViewingCampaignId] = useState<string | null>(null)
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
   const [schedulingCampaign, setSchedulingCampaign] = useState<{ id: string; name: string } | null>(null)
   const [sortField, setSortField] = useState<keyof Campaign>('created_at')
@@ -210,6 +213,11 @@ export default function CampaignsPage() {
         type: 'error'
       })
     }
+  }
+
+  const handleView = (campaignId: string) => {
+    setViewingCampaignId(campaignId)
+    setShowViewModal(true)
   }
 
   const handleEdit = (campaign: Campaign) => {
@@ -438,9 +446,6 @@ export default function CampaignsPage() {
                   Recipients {getSortIcon('total_recipients')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Metrics
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -448,13 +453,17 @@ export default function CampaignsPage() {
             <tbody className="divide-y divide-gray-200">
               {sortedCampaigns.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                     No campaigns found
                   </td>
                 </tr>
               ) : (
                 sortedCampaigns.map((campaign) => (
-                  <tr key={campaign.id} className="hover:bg-gray-50">
+                  <tr 
+                    key={campaign.id} 
+                    onClick={() => handleView(campaign.id)}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">{campaign.name}</div>
@@ -478,20 +487,10 @@ export default function CampaignsPage() {
                       {new Date(campaign.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {campaign.total_recipients}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
-                      {campaign.metrics && campaign.metrics.sent > 0 ? (
-                        <div>
-                          <div>Sent: {campaign.metrics.sent}</div>
-                          <div>Delivered: {campaign.metrics.deliveryRate}%</div>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">No data</span>
-                      )}
+                      {campaign.total_recipients || 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex space-x-2">
+                      <div className="flex space-x-2" onClick={(e) => e.stopPropagation()}>
                         {/* Edit - only for draft/scheduled */}
                         {['draft', 'scheduled'].includes(campaign.status) && (
                           <button
@@ -621,6 +620,18 @@ export default function CampaignsPage() {
         }}
         onSchedule={handleScheduleConfirm}
         campaignName={schedulingCampaign?.name || ''}
+      />
+
+      <ViewCampaignModal
+        isOpen={showViewModal}
+        onClose={() => {
+          setShowViewModal(false)
+          setViewingCampaignId(null)
+        }}
+        campaignId={viewingCampaignId}
+        onEdit={handleEdit}
+        onSend={handleSend}
+        onSchedule={handleSchedule}
       />
 
       <AlertModal
