@@ -67,9 +67,7 @@ export default function PricingPage() {
       case 'inbound_message':
         return 'Inbound Message'
       case 'outbound_message':
-        return 'Outbound Message'
-      case 'outbound_message_long':
-        return 'Outbound Message (Long)'
+        return 'Outbound Message (per segment)'
       case 'buy_phone_number':
         return 'Buy Phone Number'
       default:

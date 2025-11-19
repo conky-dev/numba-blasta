@@ -165,10 +165,56 @@ export function calculateSMSSegments(message: string): number {
 
 /**
  * Calculate SMS cost based on segments
- * Current rate: $0.01 per segment
+ * Fetches pricing from database (custom rates or pricing table)
+ * Returns cost in cents
+ * Throws error if pricing is not configured
  */
-export function calculateSMSCost(segments: number): number {
-  return segments * 1; // 1 cent per segment
+export async function calculateSMSCost(segments: number, orgId: string): Promise<number> {
+  const { query } = await import('./db');
+  
+  let costPerSegment = 0;
+
+  try {
+    // Check for custom rates first
+    const customRateResult = await query(
+      `SELECT custom_rate_outbound_message
+      FROM organizations
+      WHERE id = $1`,
+      [orgId]
+    );
+
+    if (customRateResult.rows.length > 0 && customRateResult.rows[0]) {
+      const customRate = customRateResult.rows[0].custom_rate_outbound_message;
+      
+      if (customRate !== null && customRate !== undefined) {
+        costPerSegment = parseFloat(customRate.toString());
+      }
+    }
+
+    // If no custom rate, fetch from pricing table
+    if (costPerSegment === 0) {
+      const pricingResult = await query(
+        `SELECT price_per_unit 
+         FROM pricing 
+         WHERE service_type = 'outbound_message'
+           AND is_active = true 
+         LIMIT 1`,
+        []
+      );
+
+      if (pricingResult.rows.length > 0) {
+        costPerSegment = parseFloat(pricingResult.rows[0].price_per_unit.toString());
+      } else {
+        throw new Error('Pricing not found in database. Please configure pricing in the pricing table.');
+      }
+    }
+  } catch (error: any) {
+    console.error('[TWILIO] Error fetching pricing:', error);
+    throw new Error(`Failed to fetch pricing: ${error.message}`);
+  }
+
+  // Return total cost in cents
+  return Math.round(costPerSegment * segments * 100);
 }
 
 /**

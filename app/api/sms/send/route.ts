@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     // Calculate segments and cost
     const segments = calculateSMSSegments(messageBody);
-    const costCents = calculateSMSCost(segments);
+    const costCents = await calculateSMSCost(segments, orgId);
 
     // Check balance
     const balanceResult = await query(

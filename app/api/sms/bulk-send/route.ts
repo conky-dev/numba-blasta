@@ -121,10 +121,11 @@ export async function POST(request: NextRequest) {
 
     // Calculate estimated cost (for display only - actual deduction happens in worker)
     const segments = calculateSMSSegments(messageBody);
-    const costPerMessage = calculateSMSCost(segments) / 100; // Convert cents to dollars
+    const costCents = await calculateSMSCost(segments, orgId);
+    const costPerMessage = costCents / 100; // Convert cents to dollars
     const estimatedTotalCost = costPerMessage * contacts.length;
 
-    console.log(`[BULK SMS] Estimated cost: $${estimatedTotalCost} for ${contacts.length} contacts`);
+    console.log(`[BULK SMS] Estimated cost: $${estimatedTotalCost.toFixed(4)} for ${contacts.length} contacts (${segments} segment(s) each)`);
 
     // Queue all messages (worker will handle balance checks per message)
     console.log(`[BULK SMS] Queuing ${contacts.length} messages for org ${orgId}`);
