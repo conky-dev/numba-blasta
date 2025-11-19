@@ -268,6 +268,29 @@ try {
           console.log(`[WORKER] ✅ Twilio sent: ${twilioSid} (${twilioMessage.status} -> ${twilioStatus})`);
         } catch (twilioError: any) {
           console.error(`[WORKER] ❌ Twilio error:`, twilioError.message);
+          
+          // Handle invalid phone number error (21211)
+          if (twilioError.code === 21211 || twilioError.message.includes("Invalid 'To' Phone Number")) {
+            console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}. Marking contact for deletion.`);
+            
+            // Soft delete the contact
+            // We use the normalized phone number or the original input to find the contact
+            await query(
+              `UPDATE contacts
+               SET deleted_at = NOW(),
+                   updated_at = NOW()
+               WHERE phone = $1 OR phone = $2`,
+              [to, to.replace(/^\+1/, '')] 
+            );
+            
+            // Refresh the category counts view
+            try {
+              await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
+            } catch (err) {
+              console.warn('[WORKER] Failed to refresh view after contact deletion:', err);
+            }
+          }
+          
           throw new Error(`Twilio failed: ${twilioError.message}`);
         }
       } else {
