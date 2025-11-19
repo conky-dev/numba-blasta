@@ -619,8 +619,19 @@ export default function QuickSMSPage() {
                 className="w-full px-4 py-3 focus:outline-none resize-none"
                 placeholder="Type your message here..."
               />
-              <div className="px-4 py-2 text-xs text-gray-500 text-right bg-gray-50">
-                {charCount} characters / {smsCount} SMS per recipient
+              <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Characters:</span>
+                    <span className="ml-1">{charCount}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-semibold text-blue-900">SMS Segments:</span>
+                    <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-md bg-blue-600 text-white text-base font-bold">
+                      {smsCount}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
