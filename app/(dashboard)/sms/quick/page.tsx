@@ -876,15 +876,27 @@ export default function QuickSMSPage() {
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Insert Placeholder</h2>
             <p className="text-sm text-gray-600 mb-4">Select a placeholder to insert into your message:</p>
             <div className="space-y-2">
-              {['{{firstName}}', '{{lastName}}', '{{phone}}', '{{email}}'].map((placeholder) => (
-                <button
-                  key={placeholder}
-                  onClick={() => insertPlaceholder(placeholder)}
-                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
-                >
-                  <code className="text-sm font-mono text-blue-600">{placeholder}</code>
-                </button>
-              ))}
+              <button
+                onClick={() => insertPlaceholder('{{first_name}}')}
+                className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+              >
+                <code className="text-sm font-mono text-blue-600">{'{{first_name}}'}</code>
+                <span className="text-xs text-gray-500 ml-2">- Contact's first name</span>
+              </button>
+              <button
+                onClick={() => insertPlaceholder('{{last_name}}')}
+                className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+              >
+                <code className="text-sm font-mono text-blue-600">{'{{last_name}}'}</code>
+                <span className="text-xs text-gray-500 ml-2">- Contact's last name</span>
+              </button>
+              <button
+                onClick={() => insertPlaceholder('{{from_list}}')}
+                className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-300 transition-colors"
+              >
+                <code className="text-sm font-mono text-blue-600">{'{{from_list}}'}</code>
+                <span className="text-xs text-gray-500 ml-2">- Category/list name</span>
+              </button>
             </div>
             <button
               onClick={() => setShowPlaceholderModal(false)}

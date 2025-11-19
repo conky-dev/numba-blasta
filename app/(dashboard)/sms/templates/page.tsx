@@ -305,21 +305,21 @@ export default function TemplatesPage() {
                       onClick={() => insertPlaceholder('{{first_name}}')}
                       className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
                     >
-                      {{first_name}}
+                      {'{{first_name}}'}
                     </button>
                     <button
                       type="button"
                       onClick={() => insertPlaceholder('{{last_name}}')}
                       className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
                     >
-                      {{last_name}}
+                      {'{{last_name}}'}
                     </button>
                     <button
                       type="button"
                       onClick={() => insertPlaceholder('{{from_list}}')}
                       className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
                     >
-                      {{from_list}}
+                      {'{{from_list}}'}
                     </button>
                   </div>
                   <textarea
@@ -339,11 +339,11 @@ export default function TemplatesPage() {
                 <p className="text-sm text-blue-800">
                   <strong>Available placeholders:</strong>
                   <br />
-                  • <code className="bg-blue-100 px-1 rounded">{{`{{first_name}}`}}</code> - Contact's first name
+                  • <code className="bg-blue-100 px-1 rounded">{'{{first_name}}'}</code> - Contact's first name
                   <br />
-                  • <code className="bg-blue-100 px-1 rounded">{{`{{last_name}}`}}</code> - Contact's last name
+                  • <code className="bg-blue-100 px-1 rounded">{'{{last_name}}'}</code> - Contact's last name
                   <br />
-                  • <code className="bg-blue-100 px-1 rounded">{{`{{from_list}}`}}</code> - Category/list name
+                  • <code className="bg-blue-100 px-1 rounded">{'{{from_list}}'}</code> - Category/list name
                 </p>
               </div>
             </div>

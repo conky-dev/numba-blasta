@@ -146,7 +146,11 @@ export async function POST(request: NextRequest) {
     const jobPromises = contacts.map(async (contact) => {
       // Personalize message for each contact if using template variables
       let personalizedMessage = messageBody;
-      if (templateId && (variables || contact.first_name || contact.last_name)) {
+      
+      // Check if message has any placeholders ({{...}})
+      const hasPlaceholders = /\{\{[^}]+\}\}/.test(messageBody);
+      
+      if (hasPlaceholders || templateId) {
         try {
           personalizedMessage = renderTemplate(messageBody, {
             ...variables,
