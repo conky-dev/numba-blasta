@@ -230,7 +230,7 @@ export default function PhoneNumbersPage() {
         })
         return
       }
-      // Business state is required by Twilio
+      // Business state is required
       if (!verificationForm.businessState || !verificationForm.businessState.trim()) {
         setAlertModal({
           isOpen: true,
@@ -264,7 +264,7 @@ export default function PhoneNumbersPage() {
       return
     }
 
-    // Business state is required by Twilio
+    // Business state is required
     if (!verificationForm.businessState || !verificationForm.businessState.trim()) {
       setAlertModal({
         isOpen: true,
@@ -341,7 +341,7 @@ export default function PhoneNumbersPage() {
 
       setAlertModal({
         isOpen: true,
-        message: data.message || 'Verification submitted successfully. Twilio will review your submission.',
+        message: data.message || 'Verification submitted successfully. Your submission is being reviewed.',
         title: 'Verification Submitted',
         type: 'success'
       })
@@ -462,7 +462,7 @@ export default function PhoneNumbersPage() {
       case 'verified':
         return 'Your phone number is verified and ready to use for sending SMS messages.'
       case 'awaiting_verification':
-        return 'Your phone number is being verified by Twilio. This process typically takes a few minutes to a few hours. You can start using it once verification is complete.'
+        return 'Your phone number is being verified. This process typically takes a few minutes to a few hours. You can start using it once verification is complete.'
       case 'failed':
         return 'Phone number verification failed. Please contact support or try provisioning a new number.'
       default:
@@ -482,7 +482,7 @@ export default function PhoneNumbersPage() {
             setConfirmModal({
               isOpen: true,
               title: 'Buy Phone Number',
-              message: `This will purchase a new toll-free phone number for your organization${phoneNumberPrice ? ` for $${phoneNumberPrice.toFixed(2)}` : ''}. The number will be attached to your Twilio Messaging Service and can be used for sending SMS messages.`,
+              message: `This will purchase a new toll-free phone number for your organization${phoneNumberPrice ? ` for $${phoneNumberPrice.toFixed(2)}` : ''}. The number will be attached to your messaging service and can be used for sending SMS messages.`,
               onConfirm: handleBuyNumber
             })
           }}
@@ -597,7 +597,7 @@ export default function PhoneNumbersPage() {
             <ul className="text-sm text-blue-800 space-y-2 list-disc list-inside">
               <li>You can have multiple phone numbers for your organization</li>
               <li>The primary number is used as the default sender for SMS messages</li>
-              <li>New phone numbers require verification by Twilio before they can be used</li>
+              <li>New phone numbers require verification before they can be used</li>
               <li>Verification typically takes a few minutes to a few hours</li>
               <li>You can set any verified number as primary or delete non-primary numbers</li>
             </ul>
@@ -617,7 +617,7 @@ export default function PhoneNumbersPage() {
               setConfirmModal({
                 isOpen: true,
                 title: 'Buy Phone Number',
-                message: 'This will provision a new toll-free phone number for your organization. The number will be attached to your Twilio Messaging Service and can be used for sending SMS messages.',
+                message: 'This will provision a new toll-free phone number for your organization. The number will be attached to your messaging service and can be used for sending SMS messages.',
                 onConfirm: handleBuyNumber
               })
             }}
@@ -721,13 +721,13 @@ export default function PhoneNumbersPage() {
                 />
                 <div className="mt-2 space-y-1">
                   <p className="text-xs text-gray-500">
-                    A Bundle SID is a Twilio Trust Hub compliance bundle identifier (starts with "BU"). This contains your verified business information.
+                    A Bundle SID is a compliance bundle identifier (starts with "BU"). This contains your verified business information.
                   </p>
                   <p className="text-xs text-gray-500">
-                    <strong>How to find it:</strong> Go to your Twilio Console → Trust Hub → Bundles. Copy the Bundle SID (starts with "BU") or search by the Friendly Name.
+                    <strong>How to find it:</strong> Go to your messaging provider's console → Trust Hub → Bundles. Copy the Bundle SID (starts with "BU") or search by the Friendly Name.
                   </p>
                   <p className="text-xs text-gray-500">
-                    <strong>Don't have one?</strong> You'll need to create a Trust Hub Bundle in your Twilio Console first with your business information.
+                    <strong>Don't have one?</strong> You'll need to create a Trust Hub Bundle in your messaging provider's console first with your business information.
                   </p>
                 </div>
               </div>
@@ -760,7 +760,7 @@ export default function PhoneNumbersPage() {
                 />
               </div>
 
-              {/* Business State - Required by Twilio */}
+              {/* Business State - Required for verification */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Business State/Province/Region *
@@ -774,7 +774,7 @@ export default function PhoneNumbersPage() {
                   required
                 />
                 <p className="mt-1 text-xs text-red-600 font-medium">
-                  * Required by Twilio for verification (separate from business address)
+                  * Required for verification (separate from business address)
                 </p>
               </div>
 
