@@ -43,11 +43,22 @@ export default function PreviewModal({
           <div>
             <span className="font-medium">Send Time:</span> {sendTime === 'now' ? 'Immediately' : 'Scheduled'}
           </div>
-          <div className="text-sm text-gray-600">
-            Character count: {charCount} | SMS segments: {smsCount}
+        </div>
+        <div className="mt-6 pt-4 border-t border-gray-300">
+          <div className="bg-blue-50 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-gray-700">
+                <span className="font-medium text-sm">Characters:</span>
+                <span className="ml-2 text-base">{charCount}</span>
+              </div>
+              <div className="text-blue-900">
+                <span className="font-semibold text-base">SMS Segments:</span>
+                <span className="ml-2 text-xl font-bold">{smsCount}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex space-x-4">
+        <div className="flex space-x-4 mt-6">
           <button
             onClick={onConfirm}
             className="flex-1 px-6 py-3 bg-blue-500 text-white font-medium rounded-md hover:bg-blue-600 transition-colors"
