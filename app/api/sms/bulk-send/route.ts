@@ -130,6 +130,18 @@ export async function POST(request: NextRequest) {
     // Queue all messages (worker will handle balance checks per message)
     console.log(`[BULK SMS] Queuing ${contacts.length} messages for org ${orgId}`);
     
+    // Determine from_list value (category name) for template variable
+    let fromListValue = '';
+    if (categories && categories.length > 0) {
+      if (categories.includes('all')) {
+        fromListValue = 'All Contacts';
+      } else if (categories.length === 1) {
+        fromListValue = categories[0];
+      } else {
+        fromListValue = categories.join(', ');
+      }
+    }
+    
     // Queue jobs in the background - don't wait for all to finish
     const jobPromises = contacts.map(async (contact) => {
       // Personalize message for each contact if using template variables
@@ -138,6 +150,13 @@ export async function POST(request: NextRequest) {
         try {
           personalizedMessage = renderTemplate(messageBody, {
             ...variables,
+            // New standard placeholders
+            first_name: contact.first_name || '',
+            last_name: contact.last_name || '',
+            from_list: fromListValue,
+            // Legacy support (map to user_profiles fields)
+            full_name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+            // Deprecated - kept for backward compatibility
             firstName: contact.first_name || '',
             lastName: contact.last_name || '',
             fullName: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),

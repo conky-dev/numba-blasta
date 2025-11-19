@@ -509,6 +509,16 @@ try {
           return { success: true, sent: 0, message: 'No contacts to send to' };
         }
         
+        // Determine from_list value based on target categories
+        let fromListValue = '';
+        if (!targetCategories || targetCategories.length === 0) {
+          fromListValue = 'All Contacts';
+        } else if (targetCategories.length === 1) {
+          fromListValue = targetCategories[0];
+        } else {
+          fromListValue = targetCategories.join(', ');
+        }
+        
         // Step 4: Queue individual SMS jobs for each contact
         console.log(`[CAMPAIGN] Queueing ${contacts.length} SMS jobs...`);
         
@@ -523,10 +533,20 @@ try {
           const batch = contacts.slice(i, i + batchSize);
           
           for (const contact of batch) {
-            // Render message with contact data (simple mustache-like replacement)
+            // Render message with contact data
+            // Support both new placeholders (first_name, last_name, from_list) and legacy ones
             let renderedMessage = campaign.message;
+            
+            // New standard placeholders
+            renderedMessage = renderedMessage.replace(/\{\{first_name\}\}/g, contact.first_name || '');
+            renderedMessage = renderedMessage.replace(/\{\{last_name\}\}/g, contact.last_name || '');
+            renderedMessage = renderedMessage.replace(/\{\{from_list\}\}/g, fromListValue);
+            
+            // Legacy placeholders (for backward compatibility)
             renderedMessage = renderedMessage.replace(/\{\{firstName\}\}/g, contact.first_name || '');
             renderedMessage = renderedMessage.replace(/\{\{lastName\}\}/g, contact.last_name || '');
+            renderedMessage = renderedMessage.replace(/\{\{fullName\}\}/g, `${contact.first_name || ''} ${contact.last_name || ''}`.trim());
+            renderedMessage = renderedMessage.replace(/\{\{full_name\}\}/g, `${contact.first_name || ''} ${contact.last_name || ''}`.trim());
             renderedMessage = renderedMessage.replace(/\{\{email\}\}/g, contact.email || '');
             
             await smsQueue.add('send-sms', {
