@@ -39,6 +39,8 @@ export default function QuickSMSPage() {
   const [provisioningSender, setProvisioningSender] = useState(false)
   const [phoneNumbers, setPhoneNumbers] = useState<Array<{ id: string; number: string; status: string; isPrimary: boolean }>>([])
   const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
+  const [costPerSegment, setCostPerSegment] = useState<number>(0)
+  const [loadingPricing, setLoadingPricing] = useState(true)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -51,6 +53,35 @@ export default function QuickSMSPage() {
     api.templates.list({ limit: 100 }).catch(() => {
       // Silently fail - modal will retry if needed
     })
+  }, [])
+
+  // Load pricing for cost estimation
+  useEffect(() => {
+    const loadPricing = async () => {
+      setLoadingPricing(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const response = await fetch('/api/billing/pricing', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          const outboundPricing = data.pricing?.find((p: any) => p.serviceType === 'outbound_message')
+          if (outboundPricing) {
+            setCostPerSegment(outboundPricing.pricePerUnit)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load pricing:', error)
+      } finally {
+        setLoadingPricing(false)
+      }
+    }
+
+    loadPricing()
   }, [])
 
   // Load contact categories with counts
@@ -208,6 +239,13 @@ export default function QuickSMSPage() {
   const charCount = message?.length || 0
   const smsCount = calculateSegments(message || '') || 1
   const encodingInfo = detectEncoding(message || '')
+  
+  // Calculate estimated cost
+  const estimatedCostPerMessage = costPerSegment * smsCount
+  const selectedContactCount = to.includes('all') 
+    ? totalContacts 
+    : categories.filter(cat => to.includes(cat.name)).reduce((sum, cat) => sum + cat.count, 0)
+  const estimatedTotalCost = estimatedCostPerMessage * selectedContactCount
 
   const handlePreview = () => {
     if (!senderInfo?.hasNumber) {
@@ -642,7 +680,7 @@ export default function QuickSMSPage() {
                 placeholder="Type your message here..."
               />
               <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-gray-200">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-2">
                   <div className="text-sm text-gray-600">
                     <span className="font-medium">Characters:</span>
                     <span className="ml-1">{charCount}</span>
@@ -663,6 +701,21 @@ export default function QuickSMSPage() {
                     </span>
                   </div>
                 </div>
+                
+                {/* Cost Estimation */}
+                {!loadingPricing && costPerSegment > 0 && selectedContactCount > 0 && (
+                  <div className="pt-2 border-t border-blue-200">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600">
+                        Cost per message: <span className="font-semibold text-gray-800">${estimatedCostPerMessage.toFixed(4)}</span>
+                      </span>
+                      <span className="text-gray-600">
+                        × {selectedContactCount} contact{selectedContactCount !== 1 ? 's' : ''} = 
+                        <span className="ml-1 font-bold text-blue-900 text-sm">${estimatedTotalCost.toFixed(2)}</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
                 
                 {encodingInfo.encoding === 'UCS-2' && encodingInfo.problematicChars.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-orange-200 bg-orange-50 -mx-4 px-4 py-2">
@@ -805,6 +858,9 @@ export default function QuickSMSPage() {
         sendTime={sendTime}
         charCount={charCount}
         smsCount={smsCount}
+        estimatedCostPerMessage={estimatedCostPerMessage}
+        estimatedTotalCost={estimatedTotalCost}
+        recipientCount={selectedContactCount}
       />
 
       <SelectTemplateModal

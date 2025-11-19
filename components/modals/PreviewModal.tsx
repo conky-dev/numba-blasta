@@ -8,6 +8,9 @@ interface PreviewModalProps {
   sendTime: string
   charCount: number
   smsCount: number
+  estimatedCostPerMessage?: number
+  estimatedTotalCost?: number
+  recipientCount?: number
 }
 
 export default function PreviewModal({
@@ -19,7 +22,10 @@ export default function PreviewModal({
   message,
   sendTime,
   charCount,
-  smsCount
+  smsCount,
+  estimatedCostPerMessage,
+  estimatedTotalCost,
+  recipientCount
 }: PreviewModalProps) {
   if (!isOpen) return null
 
@@ -46,7 +52,7 @@ export default function PreviewModal({
         </div>
         <div className="mt-6 pt-4 border-t border-gray-300">
           <div className="bg-blue-50 rounded-lg p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-3">
               <div className="text-gray-700">
                 <span className="font-medium text-sm">Characters:</span>
                 <span className="ml-2 text-base">{charCount}</span>
@@ -56,6 +62,21 @@ export default function PreviewModal({
                 <span className="ml-2 text-xl font-bold">{smsCount}</span>
               </div>
             </div>
+            
+            {/* Cost Estimation */}
+            {estimatedCostPerMessage !== undefined && estimatedTotalCost !== undefined && recipientCount !== undefined && recipientCount > 0 && (
+              <div className="pt-3 border-t border-blue-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700">
+                    Cost per message: <span className="font-semibold text-gray-900">${estimatedCostPerMessage.toFixed(4)}</span>
+                  </span>
+                  <span className="text-gray-700">
+                    × {recipientCount} contact{recipientCount !== 1 ? 's' : ''} = 
+                    <span className="ml-2 font-bold text-blue-900 text-lg">${estimatedTotalCost.toFixed(2)}</span>
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex space-x-4 mt-6">
