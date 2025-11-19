@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
-import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink } from 'react-icons/md'
+import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 
 interface Template {
@@ -162,30 +162,52 @@ export default function QuickSMSPage() {
   // Note: This is a simplified client-side approximation for UI preview only.
   // The actual segment calculation (used for billing) happens server-side using
   // the sms-segments-calculator library in the SMS worker.
+  const GSM_7BIT_BASIC = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
+  const GSM_7BIT_EXTENDED = '|^€{}[]~\\';
+  
+  const detectEncoding = (msg: string): { encoding: 'GSM-7' | 'UCS-2', problematicChars: string[] } => {
+    const problematicChars: string[] = []
+    
+    for (const char of msg) {
+      if (!GSM_7BIT_BASIC.includes(char) && !GSM_7BIT_EXTENDED.includes(char) && char !== '\f') {
+        if (!problematicChars.includes(char)) {
+          problematicChars.push(char)
+        }
+      }
+    }
+    
+    return {
+      encoding: problematicChars.length > 0 ? 'UCS-2' : 'GSM-7',
+      problematicChars
+    }
+  }
+  
   const calculateSegments = (msg: string): number => {
     if (!msg || msg.length === 0) return 0
     
-    // Check if message contains emojis or non-GSM characters (simplified check)
-    // Emojis and many Unicode chars require UCS-2 encoding
-    const hasEmoji = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(msg)
-    const hasNonGSM = /[^\x00-\x7F\u00A0-\u00FF\u0100-\u017F]/.test(msg) && !hasEmoji
+    const { encoding } = detectEncoding(msg)
     
-    // Smart quotes and non-breaking spaces also force UCS-2
-    const hasSmartQuotes = /['"']|['"']|[\u00A0]/.test(msg)
-    
-    const usesUCS2 = hasEmoji || hasNonGSM || hasSmartQuotes
-    
-    if (usesUCS2) {
+    if (encoding === 'UCS-2') {
       // UCS-2: 70 chars single, 67 chars per segment for multi-segment
       return msg.length <= 70 ? 1 : Math.ceil(msg.length / 67)
     } else {
-      // GSM-7: 160 chars single, 153 chars per segment for multi-segment
-      return msg.length <= 160 ? 1 : Math.ceil(msg.length / 153)
+      // GSM-7: Count extended chars as 2 septets each
+      let effectiveLength = 0
+      for (const char of msg) {
+        if (GSM_7BIT_EXTENDED.includes(char) || char === '\f') {
+          effectiveLength += 2
+        } else {
+          effectiveLength += 1
+        }
+      }
+      // 160 septets single, 153 septets per segment for multi-segment
+      return effectiveLength <= 160 ? 1 : Math.ceil(effectiveLength / 153)
     }
   }
   
   const charCount = message?.length || 0
   const smsCount = calculateSegments(message || '') || 1
+  const encodingInfo = detectEncoding(message || '')
 
   const handlePreview = () => {
     if (!senderInfo?.hasNumber) {
@@ -624,6 +646,15 @@ export default function QuickSMSPage() {
                   <div className="text-sm text-gray-600">
                     <span className="font-medium">Characters:</span>
                     <span className="ml-1">{charCount}</span>
+                    <span className="ml-3 text-xs">
+                      <span className="font-medium">Encoding:</span>
+                      <span className={`ml-1 font-semibold ${encodingInfo.encoding === 'UCS-2' ? 'text-orange-600' : 'text-green-600'}`}>
+                        {encodingInfo.encoding}
+                      </span>
+                      <span className="ml-1 text-gray-500">
+                        ({encodingInfo.encoding === 'GSM-7' ? '160/153' : '70/67'} chars)
+                      </span>
+                    </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="text-sm font-semibold text-blue-900">SMS Segments:</span>
@@ -632,6 +663,30 @@ export default function QuickSMSPage() {
                     </span>
                   </div>
                 </div>
+                
+                {encodingInfo.encoding === 'UCS-2' && encodingInfo.problematicChars.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-orange-200 bg-orange-50 -mx-4 px-4 py-2">
+                    <div className="flex items-start space-x-2">
+                      <MdWarning className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 text-xs">
+                        <p className="font-semibold text-orange-900 mb-1">
+                          UCS-2 encoding detected - only 70 chars per segment instead of 160!
+                        </p>
+                        <p className="text-orange-800">
+                          Problematic characters: 
+                          <span className="ml-1 font-mono font-bold">
+                            {encodingInfo.problematicChars.map(char => 
+                              char === '\n' ? '\\n' : char === '\r' ? '\\r' : char
+                            ).join(', ')}
+                          </span>
+                        </p>
+                        <p className="text-orange-700 mt-1">
+                          Tip: Replace emojis, smart quotes (" "), and special characters with standard ones to use GSM-7 encoding.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
