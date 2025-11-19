@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { MdSearch, MdPhoneIphone, MdMoreVert, MdRefresh, MdFilterList } from 'react-icons/md'
+import { MdSearch, MdPhoneIphone, MdMoreVert, MdRefresh, MdFilterList, MdUnsubscribe } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 import AlertModal from '@/components/modals/AlertModal'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 
 interface Message {
   id: string
@@ -53,6 +54,17 @@ export default function MessengerPage() {
     message: '',
     title: '',
     type: 'info'
+  })
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean
+    message: string
+    title: string
+    onConfirm: () => void
+  }>({
+    isOpen: false,
+    message: '',
+    title: '',
+    onConfirm: () => {}
   })
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -365,6 +377,55 @@ export default function MessengerPage() {
     })
   }
 
+  const handleOptOut = () => {
+    if (!selectedConversation) return
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Opt Out Contact',
+      message: `Are you sure you want to opt out ${selectedConversation.name}? They will no longer receive SMS messages from you.`,
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('auth_token')
+          const response = await fetch(`/api/contacts/${selectedConversation.contactId}/opt-out`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+
+          const data = await response.json()
+
+          if (!response.ok || data.error) {
+            throw new Error(data.error || 'Failed to opt out contact')
+          }
+
+          setAlertModal({
+            isOpen: true,
+            message: `${selectedConversation.name} has been opted out successfully`,
+            title: 'Success',
+            type: 'success'
+          })
+
+          // Reload conversations to update the list
+          await loadConversations()
+          
+          // Clear selected conversation
+          setSelectedConversation(null)
+        } catch (error: any) {
+          console.error('Failed to opt out contact:', error)
+          setAlertModal({
+            isOpen: true,
+            message: error.message || 'Failed to opt out contact',
+            title: 'Error',
+            type: 'error'
+          })
+        }
+      }
+    })
+  }
+
   return (
     <div className="flex h-[calc(100vh-73px)] md:h-[calc(100vh-73px)]">
       {/* Left sidebar - Conversations */}
@@ -460,20 +521,16 @@ export default function MessengerPage() {
                   <p className="text-xs text-gray-500">{selectedConversation.phone}</p>
                 </div>
               </div>
-              {/* <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2">
                 <button
-                  onClick={handleSimulateReply}
-                  disabled={simulating}
-                  className="px-3 py-2 bg-green-500 text-white text-sm rounded-md hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-                  title="Simulate inbound reply"
+                  onClick={handleOptOut}
+                  className="px-3 py-2 bg-red-500 text-white text-sm rounded-md hover:bg-red-600 transition-colors flex items-center space-x-2"
+                  title="Opt out this contact"
                 >
-                  <MdRefresh className={`w-4 h-4 ${simulating ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Simulate Reply</span>
+                  <MdUnsubscribe className="w-4 h-4" />
+                  <span className="hidden sm:inline">Opt Out</span>
                 </button>
-                <button className="p-2 text-gray-500 hover:text-gray-700">
-                  <MdMoreVert className="w-5 h-5" />
-                </button>
-              </div> */}
+              </div>
             </div>
 
             {/* Messages */}
@@ -555,6 +612,16 @@ export default function MessengerPage() {
         message={alertModal.message}
         title={alertModal.title}
         type={alertModal.type}
+      />
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        onConfirm={confirmModal.onConfirm}
+        message={confirmModal.message}
+        title={confirmModal.title}
+        type="danger"
       />
     </div>
   )
