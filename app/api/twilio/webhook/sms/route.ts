@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
            SET status = $1,
                updated_at = NOW(),
                delivered_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE delivered_at END
-           WHERE twilio_sid = $2`,
+           WHERE provider_sid = $2`,
           [messageStatus, messageSid]
         );
         
