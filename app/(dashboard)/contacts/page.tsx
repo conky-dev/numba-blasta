@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { MdEdit, MdDelete, MdEmail, MdUpload } from 'react-icons/md'
+import { MdEdit, MdDelete, MdEmail, MdUpload, MdBlock } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import { api } from '@/lib/api-client'
@@ -288,6 +288,50 @@ export default function ContactsPage() {
           setAlertModal({
             isOpen: true,
             message: error.message || 'Failed to delete contact',
+            title: 'Error',
+            type: 'error'
+          })
+        }
+      }
+    })
+  }
+
+  const handleOptOut = async (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      message: 'Are you sure you want to opt out this contact? They will no longer receive messages.',
+      title: 'Opt Out Contact',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('auth_token')
+          const response = await fetch(`/api/contacts/${id}/opt-out`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+
+          const data = await response.json()
+
+          if (!response.ok || data.error) {
+            throw new Error(data.error || 'Failed to opt out contact')
+          }
+
+          setAlertModal({
+            isOpen: true,
+            message: 'Contact opted out successfully',
+            title: 'Success',
+            type: 'success'
+          })
+
+          await fetchContacts(currentPage)
+          await loadCategories()
+        } catch (error: any) {
+          console.error('Opt out contact error:', error)
+          setAlertModal({
+            isOpen: true,
+            message: error.message || 'Failed to opt out contact',
             title: 'Error',
             type: 'error'
           })
@@ -752,6 +796,13 @@ export default function ContactsPage() {
                             title="Edit contact"
                           >
                             <MdEdit className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleOptOut(contact.id)}
+                            className="text-orange-600 hover:text-orange-900"
+                            title="Opt out contact"
+                          >
+                            <MdBlock className="w-5 h-5" />
                           </button>
                           <button
                             onClick={() => handleDelete(contact.id)}

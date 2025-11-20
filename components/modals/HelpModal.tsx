@@ -1,6 +1,6 @@
 'use client'
 
-import { MdClose, MdMessage, MdContacts, MdCampaign, MdDescription, MdAccountBalanceWallet, MdHelp, MdRocketLaunch, MdPhoneIphone, MdAttachMoney, MdKeyboard, MdEmail, MdMenuBook, MdChat } from 'react-icons/md'
+import { MdClose, MdMessage, MdContacts, MdCampaign, MdDescription, MdAccountBalanceWallet, MdHelp, MdRocketLaunch, MdPhoneIphone, MdAttachMoney, MdEmail, MdChat } from 'react-icons/md'
 
 interface HelpModalProps {
   isOpen: boolean
@@ -195,42 +195,6 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
             </div>
           </div>
 
-          {/* Keyboard Shortcuts */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-            <div className="flex items-center space-x-2 mb-3">
-              <MdKeyboard className="w-6 h-6 text-gray-700" />
-              <h4 className="text-lg font-semibold text-gray-900">
-                Keyboard Shortcuts
-              </h4>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-700">Search</span>
-                <kbd className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-mono">
-                  Cmd + K
-                </kbd>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-700">New Campaign</span>
-                <kbd className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-mono">
-                  Cmd + N
-                </kbd>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-700">Add Contact</span>
-                <kbd className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-mono">
-                  Cmd + Shift + C
-                </kbd>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-700">Help</span>
-                <kbd className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-mono">
-                  ?
-                </kbd>
-              </div>
-            </div>
-          </div>
-
           {/* Support Info */}
           <div className="border-t border-gray-200 pt-6 mt-6">
             <h4 className="text-lg font-semibold text-gray-800 mb-3">
@@ -243,14 +207,6 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
               <p className="text-gray-700 flex items-center space-x-2">
                 <MdEmail className="w-4 h-4 text-gray-600" />
                 <span>Email: <a href="mailto:support@smsblast.com" className="text-blue-600 hover:underline">support@smsblast.com</a></span>
-              </p>
-              <p className="text-gray-700 flex items-center space-x-2">
-                <MdMenuBook className="w-4 h-4 text-gray-600" />
-                <span>Documentation: <a href="#" className="text-blue-600 hover:underline">docs.smsblast.com</a></span>
-              </p>
-              <p className="text-gray-700 flex items-center space-x-2">
-                <MdChat className="w-4 h-4 text-gray-600" />
-                <span>Live Chat: Click the chat icon in the bottom right</span>
               </p>
             </div>
           </div>

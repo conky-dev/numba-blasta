@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FaQuestionCircle, FaBell, FaBars } from 'react-icons/fa'
+import { FaQuestionCircle, FaBars } from 'react-icons/fa'
 import AlertModal from '@/components/modals/AlertModal'
 import HelpModal from '@/components/modals/HelpModal'
 import { api } from '@/lib/api-client'
@@ -13,7 +13,6 @@ interface HeaderProps {
 
 export default function Header({ title, onMenuClick }: HeaderProps) {
   const [showBalanceModal, setShowBalanceModal] = useState(false)
-  const [showNotifications, setShowNotifications] = useState(false)
   const [showHelpModal, setShowHelpModal] = useState(false)
   const [balance, setBalance] = useState(0)
   const [loadingBalance, setLoadingBalance] = useState(true)
@@ -47,14 +46,6 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
       setLoadingBalance(false)
     }
   }
-
-  const notifications = [
-    { id: 1, text: 'Campaign "NB Users" sent successfully', time: '2 hours ago', unread: true },
-    { id: 2, text: 'Low balance warning: $52.88 remaining', time: '1 day ago', unread: true },
-    { id: 3, text: 'New message from +19412033291', time: '2 days ago', unread: false },
-  ]
-
-  const unreadCount = notifications.filter(n => n.unread).length
 
   const handleTopUp = async () => {
     const amount = parseFloat(topUpAmount)
@@ -154,52 +145,6 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
             >
               <FaQuestionCircle className="w-5 h-5" />
             </button>
-
-            {/* Notifications */}
-            <div className="relative">
-              <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100 relative"
-                title="Notifications"
-              >
-                <FaBell className="w-5 h-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs flex items-center justify-center">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-              
-              {/* Notifications dropdown */}
-              {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                  <div className="p-4 border-b border-gray-200">
-                    <h3 className="font-semibold text-gray-800">Notifications</h3>
-                  </div>
-                  <div className="max-h-96 overflow-y-auto">
-                    {notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        className={`p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
-                          notif.unread ? 'bg-blue-50' : ''
-                        }`}
-                      >
-                        <p className="text-sm text-gray-800">{notif.text}</p>
-                        <p className="text-xs text-gray-500 mt-1">{notif.time}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-3 border-t border-gray-200 text-center">
-                    <button 
-                      onClick={() => setShowNotifications(false)}
-                      className="text-sm text-blue-600 hover:text-blue-700"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </header>
@@ -261,14 +206,6 @@ export default function Header({ title, onMenuClick }: HeaderProps) {
             </p>
           </div>
         </div>
-      )}
-
-      {/* Click outside handlers */}
-      {showNotifications && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowNotifications(false)}
-        />
       )}
 
       <AlertModal
