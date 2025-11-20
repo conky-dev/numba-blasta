@@ -36,7 +36,7 @@ export async function GET(
          get_phone_remaining_messages(pn.phone_number) as remaining_messages,
          CASE 
            WHEN pn.rate_limit_window_start IS NULL THEN 0
-           ELSE ROUND((pn.rate_limit_current_count::FLOAT / pn.rate_limit_max * 100), 2)
+           ELSE ROUND((pn.rate_limit_current_count::NUMERIC / pn.rate_limit_max::NUMERIC * 100)::NUMERIC, 2)
          END as usage_percent
        FROM phone_numbers pn
        WHERE pn.id = $1 AND pn.org_id = $2`,
@@ -59,7 +59,9 @@ export async function GET(
         max: rateLimitInfo.rate_limit_max,
         windowHours: rateLimitInfo.rate_limit_window_hours,
         currentCount: rateLimitInfo.rate_limit_current_count || 0,
-        remaining: rateLimitInfo.remaining_messages || rateLimitInfo.rate_limit_max,
+        remaining: rateLimitInfo.remaining_messages !== null && rateLimitInfo.remaining_messages !== undefined
+          ? rateLimitInfo.remaining_messages
+          : rateLimitInfo.rate_limit_max,
         usagePercent: parseFloat(rateLimitInfo.usage_percent) || 0,
         windowStart: rateLimitInfo.rate_limit_window_start,
         windowEnd: rateLimitInfo.rate_limit_window_end,

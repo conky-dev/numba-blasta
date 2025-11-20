@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
 import RateLimitDisplay from '@/components/RateLimitDisplay'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
@@ -54,6 +55,11 @@ export default function QuickSMSPage() {
     isOpen: false,
     message: '',
     type: 'info'
+  })
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; title?: string; onConfirm: () => void }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => {}
   })
 
   // Prefetch templates on page load for faster modal opening
@@ -346,6 +352,44 @@ export default function QuickSMSPage() {
         type: 'error'
       })
       return
+    }
+
+    // Check rate limit before showing preview
+    if (selectedPhoneRateLimit) {
+      const messagesNeeded = selectedContactCount
+      
+      // If at or over limit, or not enough remaining
+      if (selectedPhoneRateLimit.remaining <= 0 || selectedPhoneRateLimit.remaining < messagesNeeded) {
+        const resetTime = selectedPhoneRateLimit.windowEnd 
+          ? new Date(selectedPhoneRateLimit.windowEnd).toLocaleString()
+          : 'soon'
+        
+        const rateLimitMessage = selectedPhoneRateLimit.remaining <= 0 
+          ? `No messages remaining for ${from}.` 
+          : `You're trying to send ${messagesNeeded.toLocaleString()} messages, but only ${selectedPhoneRateLimit.remaining.toLocaleString()} remaining for ${from}.`
+        
+        setConfirmModal({
+          isOpen: true,
+          title: 'Rate Limit Reached',
+          message: `${rateLimitMessage}\n\nThe limit resets at ${resetTime}.\n\nWould you like to buy another phone number to continue sending?`,
+          onConfirm: () => {
+            window.location.href = '/settings/phone-numbers'
+          }
+        })
+        return
+      }
+      
+      // Warn if getting close to limit (within 100 messages or 10%)
+      const warningThreshold = Math.max(100, selectedPhoneRateLimit.max * 0.1)
+      if (selectedPhoneRateLimit.remaining - messagesNeeded < warningThreshold) {
+        setAlertModal({
+          isOpen: true,
+          message: `Warning: After sending ${messagesNeeded.toLocaleString()} messages, you'll have only ${(selectedPhoneRateLimit.remaining - messagesNeeded).toLocaleString()} messages remaining for ${from} today. Consider using a different phone number for large campaigns.`,
+          title: 'Approaching Rate Limit',
+          type: 'info'
+        })
+        // Don't return - let them proceed after warning
+      }
     }
 
     setShowPreview(true)
@@ -680,9 +724,17 @@ export default function QuickSMSPage() {
 
           {/* From field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              From
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                From
+              </label>
+              <a 
+                href="/settings/phone-numbers"
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1"
+              >
+                <span>+ Buy Phone Number</span>
+              </a>
+            </div>
             {loadingPhoneNumbers ? (
               <div className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
                 Loading phone numbers...
@@ -702,14 +754,27 @@ export default function QuickSMSPage() {
                 ))}
               </select>
             ) : (
-              <select 
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
-                disabled
-              >
-                <option value="">No phone numbers available</option>
-              </select>
+              <div className="space-y-3">
+                <select 
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                  disabled
+                >
+                  <option value="">No phone numbers available</option>
+                </select>
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <p className="text-sm text-yellow-800">
+                    You need a phone number to send messages.
+                  </p>
+                  <a 
+                    href="/settings/phone-numbers"
+                    className="inline-block mt-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
+                  >
+                    Buy Phone Number ($5.00)
+                  </a>
+                </div>
+              </div>
             )}
             <p className="mt-2 text-sm text-gray-600">
               {from 
@@ -1036,6 +1101,14 @@ export default function QuickSMSPage() {
         message={alertModal.message}
         title={alertModal.title}
         type={alertModal.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        message={confirmModal.message}
+        title={confirmModal.title}
+        onConfirm={confirmModal.onConfirm}
       />
     </div>
   )

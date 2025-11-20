@@ -115,7 +115,9 @@ export async function GET(request: NextRequest) {
             max: row.rate_limit_max || 20000,
             windowHours: row.rate_limit_window_hours || 24,
             currentCount: row.rate_limit_current_count || 0,
-            remaining: row.rate_limit_remaining || row.rate_limit_max || 20000,
+            remaining: row.rate_limit_remaining !== null && row.rate_limit_remaining !== undefined 
+              ? row.rate_limit_remaining 
+              : (row.rate_limit_max || 20000),
             usagePercent: parseFloat(row.rate_limit_usage_percent) || 0,
             windowStart: row.rate_limit_window_start,
             windowEnd: row.rate_limit_window_end,

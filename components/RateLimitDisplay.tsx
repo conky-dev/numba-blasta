@@ -102,7 +102,10 @@ export default function RateLimitDisplay({
           <p className="text-xs text-red-800 flex items-start">
             <MdError className="w-3 h-3 mr-1 flex-shrink-0 mt-0.5" />
             <span>
-              <strong>Limit almost reached!</strong> Only {remaining.toLocaleString()} messages remaining.
+              {remaining === 0 
+                ? <><strong>Rate limit reached!</strong> No messages remaining until window resets.</>
+                : <><strong>Limit almost reached!</strong> Only {remaining.toLocaleString()} messages remaining.</>
+              }
             </span>
           </p>
         </div>
