@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/app/api/_lib/db';
+import { validatePasswordStrength } from '@/app/api/_lib/auth-utils';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
@@ -21,9 +22,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate password strength
-    if (newPassword.length < 8) {
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.valid) {
       return NextResponse.json(
-        { error: 'Password must be at least 8 characters long' },
+        { error: passwordValidation.error },
         { status: 400 }
       );
     }

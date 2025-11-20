@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hashPassword } from '@/app/api/_lib/auth-utils';
+import { hashPassword, validatePasswordStrength } from '@/app/api/_lib/auth-utils';
 import { query } from '@/app/api/_lib/db';
 import { sendEmailVerification } from '@/app/api/_lib/email';
 
@@ -27,9 +27,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (password.length < 8) {
+    // Validate password strength
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.valid) {
       return NextResponse.json(
-        { error: 'Password must be at least 8 characters' },
+        { error: passwordValidation.error },
         { status: 400 }
       );
     }

@@ -23,6 +23,26 @@ export interface AuthContext {
 // Basic auth helpers (server-only)
 // --------------------
 
+/**
+ * Validate password strength
+ * Requirements: At least 8 characters, 1 number, 1 symbol
+ */
+export function validatePasswordStrength(password: string): { valid: boolean; error?: string } {
+  if (!password || password.length < 8) {
+    return { valid: false, error: 'Password must be at least 8 characters long' };
+  }
+  
+  if (!/\d/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one number' };
+  }
+  
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    return { valid: false, error: 'Password must contain at least one symbol (!@#$%^&* etc.)' };
+  }
+  
+  return { valid: true };
+}
+
 export async function hashPassword(password: string): Promise<string> {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);

@@ -92,6 +92,26 @@ function ResetPasswordContent() {
       return;
     }
 
+    if (!/\d/.test(newPassword)) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Password must contain at least one number',
+        title: 'Validation Error',
+        type: 'error'
+      });
+      return;
+    }
+
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword)) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Password must contain at least one symbol (!@#$%^&* etc.)',
+        title: 'Validation Error',
+        type: 'error'
+      });
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       setAlertModal({
         isOpen: true,
@@ -284,7 +304,7 @@ function ResetPasswordContent() {
             {newPassword && newPassword.length < 8 ? (
               <p className="text-xs text-red-600">Password must be at least 8 characters</p>
             ) : (
-              <p className="text-xs text-gray-500">Must be at least 8 characters long</p>
+              <p className="text-xs text-gray-500">Must be at least 8 characters with 1 number and 1 symbol</p>
             )}
           </div>
 
@@ -321,7 +341,7 @@ function ResetPasswordContent() {
           <button 
             type="submit" 
             className="w-full px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            disabled={isSubmitting || newPassword.length < 8 || newPassword !== confirmPassword}
+            disabled={isSubmitting || newPassword.length < 8 || newPassword !== confirmPassword || !/\d/.test(newPassword) || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword)}
           >
             {isSubmitting ? 'Resetting Password...' : 'Reset Password'}
           </button>

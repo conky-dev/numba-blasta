@@ -58,6 +58,26 @@ export default function SignupContent() {
       return;
     }
 
+    if (!/\d/.test(password)) {
+      setAlertModal({
+        isOpen: true,
+        type: 'warning',
+        title: 'Weak Password',
+        message: 'Password must contain at least one number',
+      });
+      return;
+    }
+
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      setAlertModal({
+        isOpen: true,
+        type: 'warning',
+        title: 'Weak Password',
+        message: 'Password must contain at least one symbol (!@#$%^&* etc.)',
+      });
+      return;
+    }
+
     if (password !== confirmPassword) {
       setAlertModal({
         isOpen: true,
@@ -247,7 +267,7 @@ export default function SignupContent() {
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Must be at least 8 characters
+                Must be at least 8 characters with 1 number and 1 symbol
               </p>
             </div>
 
