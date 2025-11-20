@@ -683,26 +683,78 @@ try {
         // Execute batch upsert if we have values
         if (valuePlaceholders.length > 0) {
           try {
-            const upsertResult = await query(
-              `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category, deleted_at)
-               VALUES ${valuePlaceholders.join(', ')}
-               ON CONFLICT (org_id, phone, deleted_at)
-               DO UPDATE SET
-                 first_name = COALESCE(EXCLUDED.first_name, contacts.first_name),
-                 last_name = COALESCE(EXCLUDED.last_name, contacts.last_name),
-                 email = COALESCE(EXCLUDED.email, contacts.email),
-                 category = array(SELECT DISTINCT unnest(contacts.category || EXCLUDED.category)),
-                 updated_at = NOW()
-               RETURNING (xmax = 0) AS inserted`,
-              values
+            // First, check which contacts exist with opted_out_at or deleted_at
+            const phonesToCheck = [];
+            for (let i = 1; i < values.length; i += 6) {
+              phonesToCheck.push(values[i]); // phone is at index 1, 7, 13, etc.
+            }
+            
+            const existingContactsResult = await query(
+              `SELECT phone
+               FROM contacts
+               WHERE org_id = $1
+                 AND phone = ANY($2)
+                 AND (opted_out_at IS NOT NULL OR deleted_at IS NOT NULL)`,
+              [orgId, phonesToCheck]
             );
-
-            // Count inserts vs updates
-            for (const row of upsertResult.rows) {
-              if (row.inserted) {
-                progress.created++;
+            
+            const excludedPhones = new Set(
+              existingContactsResult.rows.map((row: any) => row.phone)
+            );
+            
+            // Filter out contacts that should be skipped
+            const filteredValuePlaceholders: string[] = [];
+            const filteredValues: any[] = [];
+            let filteredParamIndex = 1;
+            
+            for (let i = 0; i < valuePlaceholders.length; i++) {
+              const phoneIndex = i * 6 + 1; // phone is at positions 1, 7, 13, etc.
+              const phone = values[phoneIndex];
+              
+              if (excludedPhones.has(phone)) {
+                // Contact is opted out or deleted, skip completely
+                progress.skipped++;
+                progress.errors.push(`Row ${batchStart + i + 2}: Contact ${phone} is opted-out or deleted, skipping`);
               } else {
-                progress.updated++;
+                // Contact is clean, add to batch
+                filteredValuePlaceholders.push(
+                  `($${filteredParamIndex}, $${filteredParamIndex + 1}, $${filteredParamIndex + 2}, $${filteredParamIndex + 3}, $${filteredParamIndex + 4}, $${filteredParamIndex + 5}, NULL)`
+                );
+                filteredValues.push(
+                  values[i * 6],     // org_id
+                  values[i * 6 + 1], // phone
+                  values[i * 6 + 2], // first_name
+                  values[i * 6 + 3], // last_name
+                  values[i * 6 + 4], // email
+                  values[i * 6 + 5]  // category
+                );
+                filteredParamIndex += 6;
+              }
+            }
+            
+            // Execute filtered batch upsert
+            if (filteredValuePlaceholders.length > 0) {
+              const upsertResult = await query(
+                `INSERT INTO contacts (org_id, phone, first_name, last_name, email, category, deleted_at)
+                 VALUES ${filteredValuePlaceholders.join(', ')}
+                 ON CONFLICT (org_id, phone, deleted_at)
+                 DO UPDATE SET
+                   first_name = COALESCE(EXCLUDED.first_name, contacts.first_name),
+                   last_name = COALESCE(EXCLUDED.last_name, contacts.last_name),
+                   email = COALESCE(EXCLUDED.email, contacts.email),
+                   category = array(SELECT DISTINCT unnest(contacts.category || EXCLUDED.category)),
+                   updated_at = NOW()
+                 RETURNING (xmax = 0) AS inserted`,
+                filteredValues
+              );
+
+              // Count inserts vs updates
+              for (const row of upsertResult.rows) {
+                if (row.inserted) {
+                  progress.created++;
+                } else {
+                  progress.updated++;
+                }
               }
             }
           } catch (error: any) {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FaQuestionCircle, FaBell, FaBars } from 'react-icons/fa'
+import { FaQuestionCircle, FaBars } from 'react-icons/fa'
 import AlertModal from '@/components/modals/AlertModal'
 import HelpModal from '@/components/modals/HelpModal'
 import { api } from '@/lib/api-client'
@@ -13,7 +13,6 @@ interface HeaderProps {
 
 export default function Header({ title, onMenuClick }: HeaderProps) {
   const [showBalanceModal, setShowBalanceModal] = useState(false)
-  const [showNotifications, setShowNotifications] = useState(false)
   const [showHelpModal, setShowHelpModal] = useState(false)
   const [balance, setBalance] = useState(0)
   const [loadingBalance, setLoadingBalance] = useState(true)
