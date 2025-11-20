@@ -23,7 +23,25 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await query(
-      `SELECT id, phone_number, phone_sid, type, status, is_primary, created_at, verification_sid
+      `SELECT 
+         id, 
+         phone_number, 
+         phone_sid, 
+         type, 
+         status, 
+         is_primary, 
+         created_at, 
+         verification_sid,
+         rate_limit_max,
+         rate_limit_window_hours,
+         rate_limit_current_count,
+         rate_limit_window_start,
+         rate_limit_window_start + (rate_limit_window_hours || ' hours')::INTERVAL as rate_limit_window_end,
+         get_phone_remaining_messages(phone_number) as rate_limit_remaining,
+         CASE 
+           WHEN rate_limit_window_start IS NULL THEN 0
+           ELSE ROUND((rate_limit_current_count::NUMERIC / rate_limit_max::NUMERIC * 100)::NUMERIC, 2)
+         END as rate_limit_usage_percent
        FROM phone_numbers
        WHERE org_id = $1
        ORDER BY is_primary DESC, created_at DESC`,
@@ -93,6 +111,18 @@ export async function GET(request: NextRequest) {
           status: status,
           isPrimary: row.is_primary || false,
           createdAt: row.created_at,
+          rateLimit: {
+            max: row.rate_limit_max || 20000,
+            windowHours: row.rate_limit_window_hours || 24,
+            currentCount: row.rate_limit_current_count || 0,
+            remaining: row.rate_limit_remaining !== null && row.rate_limit_remaining !== undefined 
+              ? row.rate_limit_remaining 
+              : (row.rate_limit_max || 20000),
+            usagePercent: parseFloat(row.rate_limit_usage_percent) || 0,
+            windowStart: row.rate_limit_window_start,
+            windowEnd: row.rate_limit_window_end,
+            isActive: row.rate_limit_window_start !== null,
+          },
         };
       })
     );

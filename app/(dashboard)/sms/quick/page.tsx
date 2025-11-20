@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
+import ConfirmModal from '@/components/modals/ConfirmModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
+import RateLimitDisplay from '@/components/RateLimitDisplay'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 
@@ -41,10 +43,23 @@ export default function QuickSMSPage() {
   const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
   const [costPerSegment, setCostPerSegment] = useState<number>(0)
   const [loadingPricing, setLoadingPricing] = useState(true)
+  const [selectedPhoneRateLimit, setSelectedPhoneRateLimit] = useState<{
+    max: number
+    currentCount: number
+    remaining: number
+    usagePercent: number
+    windowEnd?: string | null
+  } | null>(null)
+  const [loadingRateLimit, setLoadingRateLimit] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
     type: 'info'
+  })
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; message: string; title?: string; onConfirm: () => void }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => {}
   })
 
   // Prefetch templates on page load for faster modal opening
@@ -189,6 +204,69 @@ export default function QuickSMSPage() {
     loadPhoneNumbers()
   }, [])
 
+  // Load rate limit info when selected phone number changes
+  useEffect(() => {
+    const loadRateLimit = async () => {
+      if (!from || phoneNumbers.length === 0) {
+        setSelectedPhoneRateLimit(null)
+        return
+      }
+
+      const selectedPhone = phoneNumbers.find(pn => pn.number === from)
+      if (!selectedPhone) {
+        setSelectedPhoneRateLimit(null)
+        return
+      }
+
+      setLoadingRateLimit(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const response = await fetch(`/api/organizations/phone-numbers/${selectedPhone.id}/rate-limit`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setSelectedPhoneRateLimit(data.limit)
+        }
+      } catch (error) {
+        console.error('Failed to load rate limit:', error)
+        setSelectedPhoneRateLimit(null)
+      } finally {
+        setLoadingRateLimit(false)
+      }
+    }
+
+    loadRateLimit()
+  }, [from, phoneNumbers])
+
+  // Function to manually refresh rate limit (call after sending)
+  const refreshRateLimit = async () => {
+    if (!from || phoneNumbers.length === 0) return
+
+    const selectedPhone = phoneNumbers.find(pn => pn.number === from)
+    if (!selectedPhone) return
+
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/organizations/phone-numbers/${selectedPhone.id}/rate-limit`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedPhoneRateLimit(data.limit)
+        console.log('[RATE-LIMIT] Refreshed:', data.limit)
+      }
+    } catch (error) {
+      console.error('Failed to refresh rate limit:', error)
+    }
+  }
+
   // Calculate SMS segments (handles GSM-7 and UCS-2 encoding)
   // Note: This is a simplified client-side approximation for UI preview only.
   // The actual segment calculation (used for billing) happens server-side using
@@ -276,6 +354,44 @@ export default function QuickSMSPage() {
       return
     }
 
+    // Check rate limit before showing preview
+    if (selectedPhoneRateLimit) {
+      const messagesNeeded = selectedContactCount
+      
+      // If at or over limit, or not enough remaining
+      if (selectedPhoneRateLimit.remaining <= 0 || selectedPhoneRateLimit.remaining < messagesNeeded) {
+        const resetTime = selectedPhoneRateLimit.windowEnd 
+          ? new Date(selectedPhoneRateLimit.windowEnd).toLocaleString()
+          : 'soon'
+        
+        const rateLimitMessage = selectedPhoneRateLimit.remaining <= 0 
+          ? `No messages remaining for ${from}.` 
+          : `You're trying to send ${messagesNeeded.toLocaleString()} messages, but only ${selectedPhoneRateLimit.remaining.toLocaleString()} remaining for ${from}.`
+        
+        setConfirmModal({
+          isOpen: true,
+          title: 'Rate Limit Reached',
+          message: `${rateLimitMessage}\n\nThe limit resets at ${resetTime}.\n\nWould you like to buy another phone number to continue sending?`,
+          onConfirm: () => {
+            window.location.href = '/settings/phone-numbers'
+          }
+        })
+        return
+      }
+      
+      // Warn if getting close to limit (within 100 messages or 10%)
+      const warningThreshold = Math.max(100, selectedPhoneRateLimit.max * 0.1)
+      if (selectedPhoneRateLimit.remaining - messagesNeeded < warningThreshold) {
+        setAlertModal({
+          isOpen: true,
+          message: `Warning: After sending ${messagesNeeded.toLocaleString()} messages, you'll have only ${(selectedPhoneRateLimit.remaining - messagesNeeded).toLocaleString()} messages remaining for ${from} today. Consider using a different phone number for large campaigns.`,
+          title: 'Approaching Rate Limit',
+          type: 'info'
+        })
+        // Don't return - let them proceed after warning
+      }
+    }
+
     setShowPreview(true)
   }
 
@@ -347,6 +463,11 @@ export default function QuickSMSPage() {
           setSelectedTemplate(null)
           setScheduledDateTime('')
           setSendTime('now')
+          
+          // Refresh rate limit after 2 seconds (give worker time to increment)
+          setTimeout(() => {
+            refreshRateLimit()
+          }, 2000)
         }
       } else {
         // No categories selected
@@ -603,9 +724,17 @@ export default function QuickSMSPage() {
 
           {/* From field */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              From
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                From
+              </label>
+              <a 
+                href="/settings/phone-numbers"
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1"
+              >
+                <span>+ Buy Phone Number</span>
+              </a>
+            </div>
             {loadingPhoneNumbers ? (
               <div className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
                 Loading phone numbers...
@@ -625,14 +754,27 @@ export default function QuickSMSPage() {
                 ))}
               </select>
             ) : (
-              <select 
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
-                disabled
-              >
-                <option value="">No phone numbers available</option>
-              </select>
+              <div className="space-y-3">
+                <select 
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                  disabled
+                >
+                  <option value="">No phone numbers available</option>
+                </select>
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <p className="text-sm text-yellow-800">
+                    You need a phone number to send messages.
+                  </p>
+                  <a 
+                    href="/settings/phone-numbers"
+                    className="inline-block mt-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
+                  >
+                    Buy Phone Number ($5.00)
+                  </a>
+                </div>
+              </div>
             )}
             <p className="mt-2 text-sm text-gray-600">
               {from 
@@ -640,6 +782,21 @@ export default function QuickSMSPage() {
                 : 'Please select a phone number to send from'
               }
             </p>
+            
+            {/* Rate Limit Display */}
+            {from && selectedPhoneRateLimit && !loadingRateLimit && (
+              <div className="mt-4">
+                <RateLimitDisplay
+                  currentCount={selectedPhoneRateLimit.currentCount}
+                  maxCount={selectedPhoneRateLimit.max}
+                  remaining={selectedPhoneRateLimit.remaining}
+                  usagePercent={selectedPhoneRateLimit.usagePercent}
+                  windowEnd={selectedPhoneRateLimit.windowEnd}
+                  phoneNumber={from}
+                  compact={false}
+                />
+              </div>
+            )}
           </div>
 
           {/* Message field */}
@@ -944,6 +1101,14 @@ export default function QuickSMSPage() {
         message={alertModal.message}
         title={alertModal.title}
         type={alertModal.type}
+      />
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        message={confirmModal.message}
+        title={confirmModal.title}
+        onConfirm={confirmModal.onConfirm}
       />
     </div>
   )

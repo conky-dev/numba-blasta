@@ -205,7 +205,55 @@ try {
         throw new Error(`Insufficient balance: $${balance.toFixed(4)} (need $${cost.toFixed(4)})`);
       }
 
-      // Step 4: Send SMS via Twilio (or simulate if not configured)
+      // Step 4: Check rate limit for the phone number
+      const fromPhoneNumber = fromNumber || null;
+      
+      console.log(`[WORKER] 🔍 Rate limit check - fromNumber: ${fromNumber}, fromPhoneNumber: ${fromPhoneNumber}`);
+      
+      if (fromPhoneNumber) {
+        console.log(`[WORKER] Checking rate limit for ${fromPhoneNumber}`);
+        
+        // Check if phone number is within rate limit
+        const rateLimitCheck = await query(
+          `SELECT check_phone_rate_limit($1) as can_send`,
+          [fromPhoneNumber]
+        );
+        
+        console.log(`[WORKER] Rate limit check result:`, rateLimitCheck.rows[0]);
+        
+        const canSend = rateLimitCheck.rows[0]?.can_send;
+        
+        if (!canSend) {
+          // Get remaining info for error message
+          const remainingCheck = await query(
+            `SELECT 
+               get_phone_remaining_messages($1) as remaining,
+               rate_limit_window_start,
+               rate_limit_window_hours
+             FROM phone_numbers
+             WHERE phone_number = $1`,
+            [fromPhoneNumber]
+          );
+          
+          const windowStart = remainingCheck.rows[0]?.rate_limit_window_start;
+          const windowHours = remainingCheck.rows[0]?.rate_limit_window_hours || 24;
+          
+          if (windowStart) {
+            const resetTime = new Date(new Date(windowStart).getTime() + windowHours * 60 * 60 * 1000);
+            throw new Error(
+              `Rate limit reached for ${fromPhoneNumber}. Window resets at ${resetTime.toISOString()}`
+            );
+          } else {
+            throw new Error(`Rate limit reached for ${fromPhoneNumber}`);
+          }
+        }
+        
+        console.log(`[WORKER] ✅ Rate limit check passed for ${fromPhoneNumber}`);
+      } else {
+        console.log(`[WORKER] ⚠️ No fromPhoneNumber, skipping rate limit check`);
+      }
+
+      // Step 5: Send SMS via Twilio (or simulate if not configured)
       let twilioSid: string | null = null;
       let twilioStatus: string = 'sent';
       
@@ -259,6 +307,44 @@ try {
             : twilioMessage.status;
           
           console.log(`[WORKER] ✅ Twilio sent: ${twilioSid} (${twilioMessage.status} -> ${twilioStatus})`);
+          
+          // Increment rate limit counter after successful send
+          console.log(`[WORKER] 📊 Attempting to increment rate limit - fromPhoneNumber: ${fromPhoneNumber}`);
+          
+          if (fromPhoneNumber) {
+            try {
+              console.log(`[WORKER] 📊 Calling increment_phone_rate_limit('${fromPhoneNumber}', 1)`);
+              
+              const incrementResult = await query(
+                `SELECT increment_phone_rate_limit($1, 1) as success`,
+                [fromPhoneNumber]
+              );
+              
+              console.log(`[WORKER] 📊 Increment result:`, incrementResult.rows[0]);
+              
+              const success = incrementResult.rows[0]?.success;
+              if (success) {
+                console.log(`[WORKER] ✅ Rate limit incremented for ${fromPhoneNumber}`);
+                
+                // Verify the increment by checking current count
+                const verifyResult = await query(
+                  `SELECT rate_limit_current_count, rate_limit_window_start 
+                   FROM phone_numbers 
+                   WHERE phone_number = $1`,
+                  [fromPhoneNumber]
+                );
+                console.log(`[WORKER] 📊 Current rate limit state:`, verifyResult.rows[0]);
+              } else {
+                console.warn(`[WORKER] ⚠️ Rate limit increment returned false for ${fromPhoneNumber}`);
+              }
+            } catch (rateLimitError: any) {
+              console.error(`[WORKER] ❌ Failed to increment rate limit:`, rateLimitError.message);
+              console.error(`[WORKER] ❌ Rate limit error stack:`, rateLimitError.stack);
+              // Don't fail the job, just log the error
+            }
+          } else {
+            console.warn(`[WORKER] ⚠️ No fromPhoneNumber provided, skipping rate limit increment`);
+          }
         } catch (twilioError: any) {
           console.error(`[WORKER] ❌ Twilio error:`, twilioError.message);
           

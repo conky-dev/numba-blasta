@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { MdPhone, MdAdd, MdCheckCircle, MdError, MdSchedule, MdRefresh, MdStar, MdStarBorder, MdDelete, MdClose, MdInfo } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import RateLimitDisplay from '@/components/RateLimitDisplay'
 
 interface PhoneNumber {
   id: string
@@ -13,6 +14,13 @@ interface PhoneNumber {
   status: 'none' | 'awaiting_verification' | 'verified' | 'failed'
   isPrimary: boolean
   createdAt: string
+  rateLimit?: {
+    max: number
+    currentCount: number
+    remaining: number
+    usagePercent: number
+    windowEnd?: string | null
+  }
 }
 
 export default function PhoneNumbersPage() {
@@ -532,10 +540,24 @@ export default function PhoneNumbersPage() {
                         <p className="text-sm text-gray-600 mb-2">
                           {getStatusDescription(phoneNumber.status)}
                         </p>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <div className="flex items-center space-x-4 text-sm text-gray-500 mb-3">
                           <span>Type: <span className="font-medium capitalize">{phoneNumber.type}</span></span>
                           <span>Added: {new Date(phoneNumber.createdAt).toLocaleDateString()}</span>
                         </div>
+                        
+                        {/* Rate Limit Display */}
+                        {phoneNumber.rateLimit && (
+                          <div className="mt-4">
+                            <RateLimitDisplay
+                              currentCount={phoneNumber.rateLimit.currentCount}
+                              maxCount={phoneNumber.rateLimit.max}
+                              remaining={phoneNumber.rateLimit.remaining}
+                              usagePercent={phoneNumber.rateLimit.usagePercent}
+                              windowEnd={phoneNumber.rateLimit.windowEnd}
+                              compact={false}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center space-x-2 ml-4">
