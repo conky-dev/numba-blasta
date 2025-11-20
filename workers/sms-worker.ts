@@ -232,6 +232,7 @@ try {
           const messageOptions: any = {
             body: finalMessage,
             to: effectiveTo,
+            statusCallback: `${process.env.NEXT_PUBLIC_APP_URL}/api/twilio/webhook/sms`,
           };
           
           if (fromNumber) {

@@ -70,13 +70,43 @@ export async function POST(request: NextRequest) {
     from = formData.get('From') as string; // Contact's phone number (E.164 from Twilio)
     to = formData.get('To') as string; // Your Twilio number
     body = formData.get('Body') as string;
+    const messageStatus = formData.get('MessageStatus') as string; // Status callback parameter
     const numSegments = parseInt(
       ((formData.get('NumSegments') as string) || '1') as string,
       10
     );
     
-    console.log('📨 Twilio webhook received:', { messageSid, from, to, body });
+    console.log('📨 Twilio webhook received:', { messageSid, from, to, body, messageStatus });
 
+    // -----------------------------------------------------------------------
+    // Handle STATUS CALLBACKS (for outbound messages)
+    // When Twilio updates us on delivery status
+    // -----------------------------------------------------------------------
+    if (messageStatus && messageSid) {
+      console.log(`📊 Status callback for ${messageSid}: ${messageStatus}`);
+      
+      try {
+        // Update the message status in database
+        await query(
+          `UPDATE sms_messages
+           SET status = $1,
+               updated_at = NOW(),
+               delivered_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE delivered_at END
+           WHERE twilio_sid = $2`,
+          [messageStatus, messageSid]
+        );
+        
+        console.log(`✅ Updated message ${messageSid} status to: ${messageStatus}`);
+        return new NextResponse(null, { status: 200 });
+      } catch (error: any) {
+        console.error(`❌ Failed to update status for ${messageSid}:`, error.message);
+        return new NextResponse(null, { status: 200 }); // Still return 200 to Twilio
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Handle INBOUND MESSAGES (when people text you)
+    // -----------------------------------------------------------------------
     if (!from || !to || !body) {
       console.error('Missing required webhook parameters');
       return new NextResponse('Missing parameters', { status: 400 });
