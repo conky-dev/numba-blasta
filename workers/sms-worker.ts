@@ -229,11 +229,14 @@ try {
           const effectiveTo = to;
           
           // Use specific fromNumber if provided, otherwise use Messaging Service
+          const statusCallbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/twilio/webhook/sms`;
           const messageOptions: any = {
             body: finalMessage,
             to: effectiveTo,
-            statusCallback: `${process.env.NEXT_PUBLIC_APP_URL}/api/twilio/webhook/sms`,
+            statusCallback: statusCallbackUrl,
           };
+          
+          console.log(`[WORKER] 📞 Status callback URL: ${statusCallbackUrl}`);
           
           if (fromNumber) {
             messageOptions.from = fromNumber;

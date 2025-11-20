@@ -8,6 +8,8 @@ import { query } from '@/app/api/_lib/db';
  * https://www.twilio.com/docs/messaging/guides/webhook-request
  */
 export async function POST(request: NextRequest) {
+  console.log('🎯 [WEBHOOK] Incoming request to /api/twilio/webhook/sms');
+  
   // Declare variables at the top so they're available in catch block
   let messageSid: string | undefined;
   let from: string | undefined;
@@ -150,6 +152,10 @@ export async function POST(request: NextRequest) {
     const normalizedBody = body.trim().toLowerCase();
     const isStop =
       normalizedBody === 'stop' ||
+      normalizedBody === 'dnc' ||
+      normalizedBody === 'unsubscribe' ||
+      normalizedBody === 'optout' ||
+      normalizedBody === 'opt-out' ||
       normalizedBody === 'stop.' ||
       normalizedBody === 'stop!' ||
       normalizedBody === 'stop\n';
