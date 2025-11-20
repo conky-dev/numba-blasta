@@ -236,6 +236,31 @@ export default function QuickSMSPage() {
     loadRateLimit()
   }, [from, phoneNumbers])
 
+  // Function to manually refresh rate limit (call after sending)
+  const refreshRateLimit = async () => {
+    if (!from || phoneNumbers.length === 0) return
+
+    const selectedPhone = phoneNumbers.find(pn => pn.number === from)
+    if (!selectedPhone) return
+
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/organizations/phone-numbers/${selectedPhone.id}/rate-limit`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedPhoneRateLimit(data.limit)
+        console.log('[RATE-LIMIT] Refreshed:', data.limit)
+      }
+    } catch (error) {
+      console.error('Failed to refresh rate limit:', error)
+    }
+  }
+
   // Calculate SMS segments (handles GSM-7 and UCS-2 encoding)
   // Note: This is a simplified client-side approximation for UI preview only.
   // The actual segment calculation (used for billing) happens server-side using
@@ -394,6 +419,11 @@ export default function QuickSMSPage() {
           setSelectedTemplate(null)
           setScheduledDateTime('')
           setSendTime('now')
+          
+          // Refresh rate limit after 2 seconds (give worker time to increment)
+          setTimeout(() => {
+            refreshRateLimit()
+          }, 2000)
         }
       } else {
         // No categories selected

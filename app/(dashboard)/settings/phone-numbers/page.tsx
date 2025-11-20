@@ -133,33 +133,7 @@ export default function PhoneNumbersPage() {
 
       if (response.ok) {
         const data = await response.json()
-        const numbers = data.phoneNumbers || []
-        
-        // Fetch rate limit info for each phone number
-        const numbersWithRateLimit = await Promise.all(
-          numbers.map(async (phone: PhoneNumber) => {
-            try {
-              const rateLimitResponse = await fetch(`/api/organizations/phone-numbers/${phone.id}/rate-limit`, {
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                }
-              })
-              
-              if (rateLimitResponse.ok) {
-                const rateLimitData = await rateLimitResponse.json()
-                return {
-                  ...phone,
-                  rateLimit: rateLimitData.limit
-                }
-              }
-            } catch (error) {
-              console.error(`Failed to load rate limit for ${phone.number}:`, error)
-            }
-            return phone
-          })
-        )
-        
-        setPhoneNumbers(numbersWithRateLimit)
+        setPhoneNumbers(data.phoneNumbers || [])
       } else {
         throw new Error('Failed to load phone numbers')
       }
