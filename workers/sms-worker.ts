@@ -725,24 +725,38 @@ try {
         // Execute batch upsert if we have values
         if (valuePlaceholders.length > 0) {
           try {
-            // First, check which contacts exist with opted_out_at or deleted_at
+            // Get phones to check
             const phonesToCheck = [];
             for (let i = 1; i < values.length; i += 6) {
               phonesToCheck.push(values[i]); // phone is at index 1, 7, 13, etc.
             }
             
+            // Check for opted-out/deleted contacts AND contacts that already have this category
             const existingContactsResult = await query(
-              `SELECT phone
+              `SELECT phone, opted_out_at, deleted_at, category
                FROM contacts
                WHERE org_id = $1
                  AND phone = ANY($2)
-                 AND (opted_out_at IS NOT NULL OR deleted_at IS NOT NULL)`,
+                 AND deleted_at IS NULL`,
               [orgId, phonesToCheck]
             );
             
-            const excludedPhones = new Set(
-              existingContactsResult.rows.map((row: any) => row.phone)
-            );
+            const excludedPhones = new Set<string>();
+            const phonesWithCategory = new Set<string>();
+            
+            for (const row of existingContactsResult.rows) {
+              // Exclude if opted out or deleted
+              if (row.opted_out_at || row.deleted_at) {
+                excludedPhones.add(row.phone);
+              }
+              // Check if contact already has ALL the categories we're trying to add
+              if (row.category && Array.isArray(row.category)) {
+                const hasAllCategories = category.every((cat: string) => row.category.includes(cat));
+                if (hasAllCategories) {
+                  phonesWithCategory.add(row.phone);
+                }
+              }
+            }
             
             // Filter out contacts that should be skipped
             const filteredValuePlaceholders: string[] = [];
@@ -757,6 +771,10 @@ try {
                 // Contact is opted out or deleted, skip completely
                 progress.skipped++;
                 progress.errors.push(`Row ${batchStart + i + 2}: Contact ${phone} is opted-out or deleted, skipping`);
+              } else if (phonesWithCategory.has(phone)) {
+                // Contact already has this category, skip to avoid duplicate
+                progress.skipped++;
+                progress.errors.push(`Row ${batchStart + i + 2}: Contact ${phone} already exists in this category, skipping`);
               } else {
                 // Contact is clean, add to batch
                 filteredValuePlaceholders.push(
