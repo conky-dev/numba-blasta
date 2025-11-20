@@ -12,6 +12,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [isSendingReset, setIsSendingReset] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -64,6 +67,62 @@ export default function LoginPage() {
         type: 'error'
       })
       setIsLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!forgotEmail || !forgotEmail.includes('@')) {
+      setAlertModal({
+        isOpen: true,
+        message: 'Please enter a valid email address',
+        title: 'Invalid Email',
+        type: 'error'
+      })
+      return
+    }
+
+    setIsSendingReset(true)
+    
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: forgotEmail }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setAlertModal({
+          isOpen: true,
+          message: data.message || 'If an account exists with that email, a password reset link has been sent.',
+          title: 'Reset Link Sent',
+          type: 'success'
+        })
+        setShowForgotPassword(false)
+        setForgotEmail('')
+      } else {
+        setAlertModal({
+          isOpen: true,
+          message: data.error || 'Failed to send reset link',
+          title: 'Error',
+          type: 'error'
+        })
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: 'An unexpected error occurred. Please try again.',
+        title: 'Error',
+        type: 'error'
+      })
+    } finally {
+      setIsSendingReset(false)
     }
   }
 
@@ -150,12 +209,10 @@ export default function LoginPage() {
               </label>
               <button
                 type="button"
-                onClick={() => setAlertModal({
-                  isOpen: true,
-                  message: 'Password reset functionality coming soon!',
-                  title: 'Forgot Password',
-                  type: 'info'
-                })}
+                onClick={() => {
+                  setShowForgotPassword(true)
+                  setForgotEmail(email) // Pre-fill with login email if available
+                }}
                 className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
               >
                 Forgot password?
@@ -279,6 +336,54 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Reset Password</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Enter your email address and we'll send you a link to reset your password.
+            </p>
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div>
+                <label htmlFor="forgot-email" className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
+                </label>
+                <input
+                  id="forgot-email"
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false)
+                    setForgotEmail('')
+                  }}
+                  className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                  disabled={isSendingReset}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  disabled={isSendingReset}
+                >
+                  {isSendingReset ? 'Sending...' : 'Send Reset Link'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <AlertModal
         isOpen={alertModal.isOpen}
