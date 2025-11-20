@@ -643,6 +643,30 @@ try {
       const phoneRegex = /^\+?[1-9]\d{1,14}$/;
       const BATCH_SIZE = 500;
 
+      // Helper to normalize phone number
+      const normalizePhone = (phone: string): string => {
+        // Remove all non-digit characters except leading +
+        let normalized = phone.replace(/[^\d+]/g, '');
+        
+        // If it starts with +, keep it
+        if (normalized.startsWith('+')) {
+          return normalized;
+        }
+        
+        // If it's 10 digits (US number without country code), add +1
+        if (normalized.length === 10) {
+          return `+1${normalized}`;
+        }
+        
+        // If it's 11 digits starting with 1 (US number with country code but no +), add +
+        if (normalized.length === 11 && normalized.startsWith('1')) {
+          return `+${normalized}`;
+        }
+        
+        // Otherwise, add + if not present
+        return normalized.startsWith('+') ? normalized : `+${normalized}`;
+      };
+
       // Process in batches
       for (let batchStart = 0; batchStart < rows.length; batchStart += BATCH_SIZE) {
         const batchEnd = Math.min(batchStart + BATCH_SIZE, rows.length);
@@ -655,16 +679,22 @@ try {
 
         for (let i = 0; i < batch.length; i++) {
           const row = batch[i];
-          const phone = getFieldValue(row, 'phone', ['phone', 'phone_number', 'mobile']) || '';
+          let phone = getFieldValue(row, 'phone', ['phone', 'phone_number', 'mobile']) || '';
 
-          // Skip rows without phone or invalid format
-          if (!phone || !phoneRegex.test(phone)) {
+          // Skip if no phone
+          if (!phone) {
             progress.skipped++;
-            if (!phone) {
-              progress.errors.push(`Row ${batchStart + i + 2}: Missing phone number`);
-            } else {
-              progress.errors.push(`Row ${batchStart + i + 2}: Invalid phone format: ${phone}`);
-            }
+            progress.errors.push(`Row ${batchStart + i + 2}: Missing phone number`);
+            continue;
+          }
+
+          // Normalize phone number
+          phone = normalizePhone(phone);
+
+          // Validate normalized phone
+          if (!phoneRegex.test(phone)) {
+            progress.skipped++;
+            progress.errors.push(`Row ${batchStart + i + 2}: Invalid phone format after normalization: ${phone}`);
             continue;
           }
 
