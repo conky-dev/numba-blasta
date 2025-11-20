@@ -672,6 +672,9 @@ try {
         const batchEnd = Math.min(batchStart + BATCH_SIZE, rows.length);
         const batch = rows.slice(batchStart, batchEnd);
 
+        // Track unique phones in this batch to prevent duplicates within the CSV
+        const seenPhonesInBatch = new Set<string>();
+
         // Build multi-row upsert
         const values: any[] = [];
         const valuePlaceholders: string[] = [];
@@ -697,6 +700,15 @@ try {
             progress.errors.push(`Row ${batchStart + i + 2}: Invalid phone format after normalization: ${phone}`);
             continue;
           }
+
+          // Check for duplicates within the CSV batch
+          if (seenPhonesInBatch.has(phone)) {
+            progress.skipped++;
+            progress.errors.push(`Row ${batchStart + i + 2}: Duplicate phone number in CSV: ${phone}`);
+            continue;
+          }
+          
+          seenPhonesInBatch.add(phone);
 
           const firstName = getFieldValue(row, 'first_name', ['first_name', 'firstname', 'first']) || null;
           const lastName = getFieldValue(row, 'last_name', ['last_name', 'lastname', 'last']) || null;
