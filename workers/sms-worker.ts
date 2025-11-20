@@ -205,7 +205,49 @@ try {
         throw new Error(`Insufficient balance: $${balance.toFixed(4)} (need $${cost.toFixed(4)})`);
       }
 
-      // Step 4: Send SMS via Twilio (or simulate if not configured)
+      // Step 4: Check rate limit for the phone number
+      const fromPhoneNumber = fromNumber || null;
+      
+      if (fromPhoneNumber) {
+        console.log(`[WORKER] Checking rate limit for ${fromPhoneNumber}`);
+        
+        // Check if phone number is within rate limit
+        const rateLimitCheck = await query(
+          `SELECT check_phone_rate_limit($1) as can_send`,
+          [fromPhoneNumber]
+        );
+        
+        const canSend = rateLimitCheck.rows[0]?.can_send;
+        
+        if (!canSend) {
+          // Get remaining info for error message
+          const remainingCheck = await query(
+            `SELECT 
+               get_phone_remaining_messages($1) as remaining,
+               rate_limit_window_start,
+               rate_limit_window_hours
+             FROM phone_numbers
+             WHERE phone_number = $1`,
+            [fromPhoneNumber]
+          );
+          
+          const windowStart = remainingCheck.rows[0]?.rate_limit_window_start;
+          const windowHours = remainingCheck.rows[0]?.rate_limit_window_hours || 24;
+          
+          if (windowStart) {
+            const resetTime = new Date(new Date(windowStart).getTime() + windowHours * 60 * 60 * 1000);
+            throw new Error(
+              `Rate limit reached for ${fromPhoneNumber}. Window resets at ${resetTime.toISOString()}`
+            );
+          } else {
+            throw new Error(`Rate limit reached for ${fromPhoneNumber}`);
+          }
+        }
+        
+        console.log(`[WORKER] ✅ Rate limit check passed for ${fromPhoneNumber}`);
+      }
+
+      // Step 5: Send SMS via Twilio (or simulate if not configured)
       let twilioSid: string | null = null;
       let twilioStatus: string = 'sent';
       
@@ -259,6 +301,26 @@ try {
             : twilioMessage.status;
           
           console.log(`[WORKER] ✅ Twilio sent: ${twilioSid} (${twilioMessage.status} -> ${twilioStatus})`);
+          
+          // Increment rate limit counter after successful send
+          if (fromPhoneNumber) {
+            try {
+              const incrementResult = await query(
+                `SELECT increment_phone_rate_limit($1, 1) as success`,
+                [fromPhoneNumber]
+              );
+              
+              const success = incrementResult.rows[0]?.success;
+              if (success) {
+                console.log(`[WORKER] ✅ Rate limit incremented for ${fromPhoneNumber}`);
+              } else {
+                console.warn(`[WORKER] ⚠️ Rate limit increment returned false for ${fromPhoneNumber}`);
+              }
+            } catch (rateLimitError: any) {
+              console.error(`[WORKER] ❌ Failed to increment rate limit:`, rateLimitError.message);
+              // Don't fail the job, just log the error
+            }
+          }
         } catch (twilioError: any) {
           console.error(`[WORKER] ❌ Twilio error:`, twilioError.message);
           

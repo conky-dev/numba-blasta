@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
+import RateLimitDisplay from '@/components/RateLimitDisplay'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 
@@ -41,6 +42,14 @@ export default function QuickSMSPage() {
   const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
   const [costPerSegment, setCostPerSegment] = useState<number>(0)
   const [loadingPricing, setLoadingPricing] = useState(true)
+  const [selectedPhoneRateLimit, setSelectedPhoneRateLimit] = useState<{
+    max: number
+    currentCount: number
+    remaining: number
+    usagePercent: number
+    windowEnd?: string | null
+  } | null>(null)
+  const [loadingRateLimit, setLoadingRateLimit] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -188,6 +197,44 @@ export default function QuickSMSPage() {
 
     loadPhoneNumbers()
   }, [])
+
+  // Load rate limit info when selected phone number changes
+  useEffect(() => {
+    const loadRateLimit = async () => {
+      if (!from || phoneNumbers.length === 0) {
+        setSelectedPhoneRateLimit(null)
+        return
+      }
+
+      const selectedPhone = phoneNumbers.find(pn => pn.number === from)
+      if (!selectedPhone) {
+        setSelectedPhoneRateLimit(null)
+        return
+      }
+
+      setLoadingRateLimit(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const response = await fetch(`/api/organizations/phone-numbers/${selectedPhone.id}/rate-limit`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setSelectedPhoneRateLimit(data.limit)
+        }
+      } catch (error) {
+        console.error('Failed to load rate limit:', error)
+        setSelectedPhoneRateLimit(null)
+      } finally {
+        setLoadingRateLimit(false)
+      }
+    }
+
+    loadRateLimit()
+  }, [from, phoneNumbers])
 
   // Calculate SMS segments (handles GSM-7 and UCS-2 encoding)
   // Note: This is a simplified client-side approximation for UI preview only.
@@ -640,6 +687,21 @@ export default function QuickSMSPage() {
                 : 'Please select a phone number to send from'
               }
             </p>
+            
+            {/* Rate Limit Display */}
+            {from && selectedPhoneRateLimit && !loadingRateLimit && (
+              <div className="mt-4">
+                <RateLimitDisplay
+                  currentCount={selectedPhoneRateLimit.currentCount}
+                  maxCount={selectedPhoneRateLimit.max}
+                  remaining={selectedPhoneRateLimit.remaining}
+                  usagePercent={selectedPhoneRateLimit.usagePercent}
+                  windowEnd={selectedPhoneRateLimit.windowEnd}
+                  phoneNumber={from}
+                  compact={false}
+                />
+              </div>
+            )}
           </div>
 
           {/* Message field */}
