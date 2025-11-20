@@ -208,10 +208,6 @@ export default function HelpModal({ isOpen, onClose }: HelpModalProps) {
                 <MdEmail className="w-4 h-4 text-gray-600" />
                 <span>Email: <a href="mailto:support@smsblast.com" className="text-blue-600 hover:underline">support@smsblast.com</a></span>
               </p>
-              <p className="text-gray-700 flex items-center space-x-2">
-                <MdChat className="w-4 h-4 text-gray-600" />
-                <span>Live Chat: Click the chat icon in the bottom right</span>
-              </p>
             </div>
           </div>
         </div>
