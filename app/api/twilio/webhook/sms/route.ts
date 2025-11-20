@@ -89,14 +89,18 @@ export async function POST(request: NextRequest) {
       
       try {
         // Update the message status in database
-        await query(
-          `UPDATE sms_messages
-           SET status = $1,
-               updated_at = NOW(),
-               delivered_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE delivered_at END
-           WHERE provider_sid = $2`,
-          [messageStatus, messageSid]
-        );
+        const updateQuery = messageStatus === 'delivered'
+          ? `UPDATE sms_messages
+             SET status = $1,
+                 updated_at = NOW(),
+                 delivered_at = NOW()
+             WHERE provider_sid = $2`
+          : `UPDATE sms_messages
+             SET status = $1,
+                 updated_at = NOW()
+             WHERE provider_sid = $2`;
+        
+        await query(updateQuery, [messageStatus, messageSid]);
         
         console.log(`✅ Updated message ${messageSid} status to: ${messageStatus}`);
         return new NextResponse(null, { status: 200 });
