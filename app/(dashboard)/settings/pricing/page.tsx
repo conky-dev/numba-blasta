@@ -70,6 +70,8 @@ export default function PricingPage() {
         return 'Outbound Message (per segment)'
       case 'buy_phone_number':
         return 'Buy Phone Number'
+      case 'invalid_number_attempt':
+        return 'Invalid Number Attempt'
       default:
         return serviceType
     }
@@ -165,9 +167,9 @@ export default function PricingPage() {
         <h3 className="text-sm font-medium text-blue-900 mb-2">Pricing Notes</h3>
         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
           <li><strong>Inbound Message:</strong> Cost per SMS message received</li>
-          <li><strong>Outbound Message:</strong> Cost per SMS message sent (under 140 characters, single segment)</li>
-          <li><strong>Outbound Message (Long):</strong> Cost per SMS message sent (over 140 characters, multiple segments)</li>
+          <li><strong>Outbound Message:</strong> Cost per SMS message sent (charged per segment)</li>
           <li><strong>Buy Phone Number:</strong> One-time purchase fee for a toll-free phone number</li>
+          <li><strong>Invalid Number Attempt:</strong> Cost charged when attempting to send to an invalid phone number (covers API call cost)</li>
           {pricing.some(p => p.isCustomRate) && (
             <li className="mt-2 pt-2 border-t border-blue-200">
               <strong>Custom Rates:</strong> Items marked with a "Custom" badge indicate that your organization has custom pricing that overrides the default rates. These rates apply to all messages sent by your organization.

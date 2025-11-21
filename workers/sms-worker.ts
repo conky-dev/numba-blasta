@@ -144,8 +144,9 @@ try {
 
       console.log(`[WORKER] Message segments: ${segments}`);
 
-      // Fetch pricing - check for custom rates first, then fall back to pricing table
+      // Fetch all pricing upfront - check for custom rates first, then fall back to pricing table
       let costPerSegment = 0;
+      let invalidAttemptCost = 0;
 
       try {
         // Check for custom rates from organizations table
@@ -165,24 +166,34 @@ try {
           }
         }
 
-        // If no custom rate, fetch from pricing table
-        if (costPerSegment === 0) {
-          const pricingResult = await query(
-            `SELECT price_per_unit 
-             FROM pricing 
-             WHERE service_type = 'outbound_message'
-               AND is_active = true 
-             LIMIT 1`,
-            []
-          );
+        // Fetch all pricing from table in one query
+        const pricingResult = await query(
+          `SELECT service_type, price_per_unit 
+           FROM pricing 
+           WHERE service_type IN ('outbound_message', 'invalid_number_attempt')
+             AND is_active = true`,
+          []
+        );
 
-          if (pricingResult.rows.length > 0) {
-            costPerSegment = parseFloat(pricingResult.rows[0].price_per_unit.toString());
+        // Build pricing map
+        const pricingMap: Record<string, number> = {};
+        for (const row of pricingResult.rows) {
+          pricingMap[row.service_type] = parseFloat(row.price_per_unit.toString());
+        }
+
+        // Set outbound cost if not using custom rate
+        if (costPerSegment === 0) {
+          if (pricingMap['outbound_message']) {
+            costPerSegment = pricingMap['outbound_message'];
             console.log(`[WORKER] Using pricing table rate: $${costPerSegment}/segment`);
           } else {
             throw new Error('Pricing not found in database. Please configure pricing in the pricing table.');
           }
         }
+
+        // Set invalid attempt cost
+        invalidAttemptCost = pricingMap['invalid_number_attempt'] || 0.0015; // fallback to $0.0015
+        
       } catch (pricingError: any) {
         console.error(`[WORKER] Error fetching pricing:`, pricingError.message);
         throw new Error(`Failed to fetch pricing: ${pricingError.message}`);
@@ -350,7 +361,40 @@ try {
           
           // Handle invalid phone number error (21211)
           if (twilioError.code === 21211 || twilioError.message.includes("Invalid 'To' Phone Number")) {
-            console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}. Marking contact for deletion.`);
+            console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}. Marking contact for deletion and charging invalid attempt fee.`);
+            
+            // Charge for invalid number attempt using cached pricing
+            try {
+              if (invalidAttemptCost > 0) {
+                // Deduct the cost
+                await query(
+                  `UPDATE organizations 
+                   SET balance = balance - $1, 
+                       updated_at = NOW() 
+                   WHERE id = $2`,
+                  [invalidAttemptCost, orgId]
+                );
+
+                // Log the transaction
+                await query(
+                  `INSERT INTO billing_transactions 
+                   (org_id, amount, type, service_type, description, balance_after, created_at)
+                   VALUES ($1, $2, 'charge', 'invalid_number_attempt', $3, 
+                           (SELECT balance FROM organizations WHERE id = $1), NOW())`,
+                  [
+                    orgId,
+                    invalidAttemptCost,
+                    `Invalid number attempt to ${to}`
+                  ]
+                );
+
+                console.log(`[WORKER] 💰 Charged $${invalidAttemptCost} for invalid number attempt`);
+              } else {
+                console.warn(`[WORKER] ⚠️  No pricing found for invalid_number_attempt`);
+              }
+            } catch (chargeError: any) {
+              console.error(`[WORKER] ❌ Failed to charge for invalid number attempt:`, chargeError.message);
+            }
             
             // Soft delete the contact
             // We use the normalized phone number or the original input to find the contact
