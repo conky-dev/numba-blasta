@@ -63,6 +63,116 @@ async function query(sql: string, params?: any[]) {
   }
 }
 
+// =================================================================
+// Helper Functions for Error Handling
+// =================================================================
+
+// Charge for invalid attempt
+async function chargeInvalidAttempt(
+  orgId: string,
+  invalidAttemptCost: number,
+  campaignId: string | null,
+  to: string
+): Promise<void> {
+  if (invalidAttemptCost > 0) {
+    const deductResult = await query(
+      `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7) as transaction_id`,
+      [
+        orgId,
+        invalidAttemptCost,
+        1,
+        invalidAttemptCost,
+        null,
+        campaignId || null,
+        `Invalid attempt to ${to}`
+      ]
+    );
+    console.log(`[WORKER] 💰 Charged $${invalidAttemptCost} (tx: ${deductResult.rows[0]?.transaction_id})`);
+  } else {
+    console.warn(`[WORKER] ⚠️  No pricing found for invalid_number_attempt`);
+  }
+}
+
+// Soft delete a contact
+async function softDeleteContact(orgId: string, to: string): Promise<void> {
+  const deleteResult = await query(
+    `UPDATE contacts
+     SET deleted_at = NOW(),
+         updated_at = NOW()
+     WHERE org_id = $1 
+       AND (phone = $2 OR phone = $3)
+       AND deleted_at IS NULL`,
+    [orgId, to, to.replace(/^\+1/, '')]
+  );
+  
+  if (deleteResult.rowCount && deleteResult.rowCount > 0) {
+    console.log(`[WORKER] 🗑️ Marked ${deleteResult.rowCount} contact(s) as deleted`);
+  } else {
+    console.warn(`[WORKER] ⚠️  No contact found to mark as deleted for ${to}`);
+  }
+}
+
+// Mark contact as opted out
+async function markContactOptedOut(orgId: string, to: string): Promise<void> {
+  const optOutResult = await query(
+    `UPDATE contacts
+     SET opted_out_at = NOW(),
+         updated_at = NOW()
+     WHERE org_id = $1 
+       AND (phone = $2 OR phone = $3)
+       AND opted_out_at IS NULL`,
+    [orgId, to, to.replace(/^\+1/, '')]
+  );
+  
+  if (optOutResult.rowCount && optOutResult.rowCount > 0) {
+    console.log(`[WORKER] 🛑 Marked ${optOutResult.rowCount} contact(s) as opted out`);
+  } else {
+    console.warn(`[WORKER] ⚠️  No contact found to mark as opted out for ${to}`);
+  }
+}
+
+// Refresh materialized view
+async function refreshMaterializedView(): Promise<void> {
+  try {
+    await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
+  } catch (err) {
+    console.warn('[WORKER] Failed to refresh view:', err);
+  }
+}
+
+// Save failed message record
+async function saveFailedMessage(
+  orgId: string,
+  campaignId: string | null,
+  to: string,
+  fromPhoneNumber: string | null,
+  finalMessage: string,
+  errorMessage: string,
+  segments: number,
+  priceCents: number
+): Promise<void> {
+  await query(
+    `INSERT INTO sms_messages 
+     (org_id, campaign_id, to_number, from_number, body, direction, status, error_message, segments, price_cents, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())`,
+    [
+      orgId,
+      campaignId || null,
+      to,
+      fromPhoneNumber || null,
+      finalMessage,
+      'outbound',
+      'failed',
+      errorMessage,
+      segments,
+      priceCents
+    ]
+  );
+  console.log(`[WORKER] 📝 Saved failed message record: ${errorMessage}`);
+}
+
+// =================================================================
+
 // Connect to Redis with keepalive to prevent connection drops
 console.log('[REDIS] Connecting to Redis...');
 const connection = new IORedis(process.env.REDIS_URL!, {
@@ -359,91 +469,71 @@ try {
         } catch (twilioError: any) {
           console.error(`[WORKER] ❌ Twilio error:`, twilioError.message);
           
-          // Handle invalid phone number error (21211)
+          // =================================================================
+          // Handle different types of Twilio errors
+          // =================================================================
+          
+          // 1. Invalid phone number format (21211)
           if (twilioError.code === 21211 || twilioError.message.includes("Invalid 'To' Phone Number")) {
-            console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}. Marking contact for deletion and charging invalid attempt fee.`);
+            console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}`);
             
-            // Charge for invalid number attempt using deduct_credits function
             try {
-              if (invalidAttemptCost > 0) {
-                // Use deduct_credits (same as successful messages) for consistency
-                const deductResult = await query(
-                  `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7) as transaction_id`,
-                  [
-                    orgId,
-                    invalidAttemptCost,        // p_amount
-                    1,                         // p_sms_count (1 attempt)
-                    invalidAttemptCost,        // p_cost_per_sms (same as total since 1 attempt)
-                    null,                      // p_message_id (will be set later if we save message)
-                    campaignId || null,        // p_campaign_id
-                    `Invalid number attempt to ${to}` // p_description
-                  ]
-                );
-
-                console.log(`[WORKER] 💰 Charged $${invalidAttemptCost} for invalid number attempt (tx: ${deductResult.rows[0]?.transaction_id})`);
-              } else {
-                console.warn(`[WORKER] ⚠️  No pricing found for invalid_number_attempt`);
-              }
-            } catch (chargeError: any) {
-              console.error(`[WORKER] ❌ Failed to charge for invalid number attempt:`, chargeError.message);
-            }
-            
-            // Soft delete the contact
-            // We use the normalized phone number or the original input to find the contact
-            try {
-              const deleteResult = await query(
-                `UPDATE contacts
-                 SET deleted_at = NOW(),
-                     updated_at = NOW()
-                 WHERE org_id = $1 
-                   AND (phone = $2 OR phone = $3)
-                   AND deleted_at IS NULL`,
-                [orgId, to, to.replace(/^\+1/, '')]
+              await chargeInvalidAttempt(orgId, invalidAttemptCost, campaignId || null, to);
+              await softDeleteContact(orgId, to);
+              await refreshMaterializedView();
+              await saveFailedMessage(
+                orgId, campaignId || null, to, fromPhoneNumber || null,
+                finalMessage, 'Invalid phone number', segments,
+                Math.round(invalidAttemptCost * 100)
               );
-              
-              if (deleteResult.rowCount && deleteResult.rowCount > 0) {
-                console.log(`[WORKER] 🗑️ Marked ${deleteResult.rowCount} contact(s) as deleted`);
-              } else {
-                console.warn(`[WORKER] ⚠️  No contact found to mark as deleted for ${to}`);
-              }
-            } catch (deleteError: any) {
-              console.error(`[WORKER] ❌ Failed to delete contact:`, deleteError.message);
+            } catch (err: any) {
+              console.error(`[WORKER] ❌ Error handling invalid number:`, err.message);
             }
             
-            // Refresh the category counts view
-            try {
-              await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts');
-            } catch (err) {
-              console.warn('[WORKER] Failed to refresh view after contact deletion:', err);
-            }
-            
-            // Save a failed message record to DB for tracking
-            try {
-              await query(
-                `INSERT INTO sms_messages 
-                 (org_id, campaign_id, to_number, from_number, body, direction, status, error_message, segments, price_cents, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())`,
-                [
-                  orgId,
-                  campaignId || null,
-                  to, // to_number
-                  fromPhoneNumber || null, // from_number
-                  finalMessage,
-                  'outbound',
-                  'failed',
-                  'Invalid phone number',
-                  segments,
-                  Math.round(invalidAttemptCost * 100) // price_cents
-                ]
-              );
-              console.log(`[WORKER] 📝 Saved failed message record for invalid number`);
-            } catch (saveError: any) {
-              console.error(`[WORKER] ❌ Failed to save message record:`, saveError.message);
-            }
-            
-            // Mark job as completed (not failed) since invalid numbers are not retry-able
             console.log(`[WORKER] ✅ Job completed - invalid number handled gracefully`);
-            return; // Exit gracefully without throwing
+            return;
+          }
+          
+          // 2. Region/country not enabled for SMS
+          if (twilioError.message.includes("Permission to send an SMS has not been enabled for the region")) {
+            console.log(`[WORKER] 🌍 Region not enabled for: ${to}`);
+            
+            try {
+              await chargeInvalidAttempt(orgId, invalidAttemptCost, campaignId || null, to);
+              await softDeleteContact(orgId, to);
+              await refreshMaterializedView();
+              await saveFailedMessage(
+                orgId, campaignId || null, to, fromPhoneNumber || null,
+                finalMessage, 'Region not enabled', segments,
+                Math.round(invalidAttemptCost * 100)
+              );
+            } catch (err: any) {
+              console.error(`[WORKER] ❌ Error handling region not enabled:`, err.message);
+            }
+            
+            console.log(`[WORKER] ✅ Job completed - region not enabled handled gracefully`);
+            return;
+          }
+          
+          // 3. Contact has opted out via Twilio
+          if (twilioError.message.includes("Attempt to send to unsubscribed recipient")) {
+            console.log(`[WORKER] 🛑 Contact opted out via Twilio: ${to}`);
+            
+            // NO CHARGE - Twilio doesn't charge for blocked opt-out sends
+            try {
+              await markContactOptedOut(orgId, to);
+              await refreshMaterializedView();
+              await saveFailedMessage(
+                orgId, campaignId || null, to, fromPhoneNumber || null,
+                finalMessage, 'Contact opted out via Twilio', segments,
+                0 // No charge
+              );
+            } catch (err: any) {
+              console.error(`[WORKER] ❌ Error handling opted out contact:`, err.message);
+            }
+            
+            console.log(`[WORKER] ✅ Job completed - opted out contact handled gracefully`);
+            return;
           }
           
           // For other Twilio errors, throw to retry
