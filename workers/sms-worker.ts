@@ -144,8 +144,9 @@ try {
 
       console.log(`[WORKER] Message segments: ${segments}`);
 
-      // Fetch pricing - check for custom rates first, then fall back to pricing table
+      // Fetch all pricing upfront - check for custom rates first, then fall back to pricing table
       let costPerSegment = 0;
+      let invalidAttemptCost = 0;
 
       try {
         // Check for custom rates from organizations table
@@ -165,24 +166,34 @@ try {
           }
         }
 
-        // If no custom rate, fetch from pricing table
-        if (costPerSegment === 0) {
-          const pricingResult = await query(
-            `SELECT price_per_unit 
-             FROM pricing 
-             WHERE service_type = 'outbound_message'
-               AND is_active = true 
-             LIMIT 1`,
-            []
-          );
+        // Fetch all pricing from table in one query
+        const pricingResult = await query(
+          `SELECT service_type, price_per_unit 
+           FROM pricing 
+           WHERE service_type IN ('outbound_message', 'invalid_number_attempt')
+             AND is_active = true`,
+          []
+        );
 
-          if (pricingResult.rows.length > 0) {
-            costPerSegment = parseFloat(pricingResult.rows[0].price_per_unit.toString());
+        // Build pricing map
+        const pricingMap: Record<string, number> = {};
+        for (const row of pricingResult.rows) {
+          pricingMap[row.service_type] = parseFloat(row.price_per_unit.toString());
+        }
+
+        // Set outbound cost if not using custom rate
+        if (costPerSegment === 0) {
+          if (pricingMap['outbound_message']) {
+            costPerSegment = pricingMap['outbound_message'];
             console.log(`[WORKER] Using pricing table rate: $${costPerSegment}/segment`);
           } else {
             throw new Error('Pricing not found in database. Please configure pricing in the pricing table.');
           }
         }
+
+        // Set invalid attempt cost
+        invalidAttemptCost = pricingMap['invalid_number_attempt'] || 0.0015; // fallback to $0.0015
+        
       } catch (pricingError: any) {
         console.error(`[WORKER] Error fetching pricing:`, pricingError.message);
         throw new Error(`Failed to fetch pricing: ${pricingError.message}`);
@@ -350,17 +361,54 @@ try {
           
           // Handle invalid phone number error (21211)
           if (twilioError.code === 21211 || twilioError.message.includes("Invalid 'To' Phone Number")) {
-            console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}. Marking contact for deletion.`);
+            console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}. Marking contact for deletion and charging invalid attempt fee.`);
+            
+            // Charge for invalid number attempt using deduct_credits function
+            try {
+              if (invalidAttemptCost > 0) {
+                // Use deduct_credits (same as successful messages) for consistency
+                const deductResult = await query(
+                  `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7) as transaction_id`,
+                  [
+                    orgId,
+                    invalidAttemptCost,        // p_amount
+                    1,                         // p_sms_count (1 attempt)
+                    invalidAttemptCost,        // p_cost_per_sms (same as total since 1 attempt)
+                    null,                      // p_message_id (will be set later if we save message)
+                    campaignId || null,        // p_campaign_id
+                    `Invalid number attempt to ${to}` // p_description
+                  ]
+                );
+
+                console.log(`[WORKER] 💰 Charged $${invalidAttemptCost} for invalid number attempt (tx: ${deductResult.rows[0]?.transaction_id})`);
+              } else {
+                console.warn(`[WORKER] ⚠️  No pricing found for invalid_number_attempt`);
+              }
+            } catch (chargeError: any) {
+              console.error(`[WORKER] ❌ Failed to charge for invalid number attempt:`, chargeError.message);
+            }
             
             // Soft delete the contact
             // We use the normalized phone number or the original input to find the contact
-            await query(
-              `UPDATE contacts
-               SET deleted_at = NOW(),
-                   updated_at = NOW()
-               WHERE phone = $1 OR phone = $2`,
-              [to, to.replace(/^\+1/, '')] 
-            );
+            try {
+              const deleteResult = await query(
+                `UPDATE contacts
+                 SET deleted_at = NOW(),
+                     updated_at = NOW()
+                 WHERE org_id = $1 
+                   AND (phone = $2 OR phone = $3)
+                   AND deleted_at IS NULL`,
+                [orgId, to, to.replace(/^\+1/, '')]
+              );
+              
+              if (deleteResult.rowCount && deleteResult.rowCount > 0) {
+                console.log(`[WORKER] 🗑️ Marked ${deleteResult.rowCount} contact(s) as deleted`);
+              } else {
+                console.warn(`[WORKER] ⚠️  No contact found to mark as deleted for ${to}`);
+              }
+            } catch (deleteError: any) {
+              console.error(`[WORKER] ❌ Failed to delete contact:`, deleteError.message);
+            }
             
             // Refresh the category counts view
             try {
@@ -368,8 +416,37 @@ try {
             } catch (err) {
               console.warn('[WORKER] Failed to refresh view after contact deletion:', err);
             }
+            
+            // Save a failed message record to DB for tracking
+            try {
+              await query(
+                `INSERT INTO sms_messages 
+                 (org_id, campaign_id, to_number, from_number, body, direction, status, error_message, segments, price_cents, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())`,
+                [
+                  orgId,
+                  campaignId || null,
+                  to, // to_number
+                  fromPhoneNumber || null, // from_number
+                  finalMessage,
+                  'outbound',
+                  'failed',
+                  'Invalid phone number',
+                  segments,
+                  Math.round(invalidAttemptCost * 100) // price_cents
+                ]
+              );
+              console.log(`[WORKER] 📝 Saved failed message record for invalid number`);
+            } catch (saveError: any) {
+              console.error(`[WORKER] ❌ Failed to save message record:`, saveError.message);
+            }
+            
+            // Mark job as completed (not failed) since invalid numbers are not retry-able
+            console.log(`[WORKER] ✅ Job completed - invalid number handled gracefully`);
+            return; // Exit gracefully without throwing
           }
           
+          // For other Twilio errors, throw to retry
           throw new Error(`Twilio failed: ${twilioError.message}`);
         }
       } else {
