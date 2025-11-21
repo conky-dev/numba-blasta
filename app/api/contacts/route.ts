@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
       WHERE org_id = $1 
         AND deleted_at IS NULL
         AND opted_out_at IS NULL
+        AND soft_deleted = FALSE
     `;
     
     const params: any[] = [orgId];
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
       WHERE org_id = $1 
         AND deleted_at IS NULL
         AND opted_out_at IS NULL
+        AND soft_deleted = FALSE
     `;
     const countParams: any[] = [orgId];
     let countParamIndex = 2;
