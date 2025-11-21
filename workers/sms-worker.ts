@@ -383,14 +383,14 @@ try {
                   [invalidAttemptCost, orgId]
                 );
 
-                // Log the transaction
+                // Log the transaction (use 'adjustment' type since 'charge' is not allowed)
                 await query(
                   `INSERT INTO billing_transactions 
                    (org_id, type, amount, balance_before, balance_after, description, created_at)
                    VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
                   [
                     orgId,
-                    'charge',
+                    'adjustment', // Use 'adjustment' instead of 'charge'
                     -invalidAttemptCost,
                     currentBalance,
                     newBalance,
@@ -439,15 +439,19 @@ try {
             try {
               await query(
                 `INSERT INTO sms_messages 
-                 (org_id, campaign_id, contact_phone, body, from_number, status, error_message, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, 'failed', $6, NOW(), NOW())`,
+                 (org_id, campaign_id, to_number, from_number, body, direction, status, error_message, segments, price_cents, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())`,
                 [
                   orgId,
                   campaignId || null,
-                  to,
+                  to, // to_number
+                  fromPhoneNumber || null, // from_number
                   finalMessage,
-                  fromPhoneNumber || 'unknown',
-                  'Invalid phone number'
+                  'outbound',
+                  'failed',
+                  'Invalid phone number',
+                  segments,
+                  Math.round(invalidAttemptCost * 100) // price_cents
                 ]
               );
               console.log(`[WORKER] 📝 Saved failed message record for invalid number`);
