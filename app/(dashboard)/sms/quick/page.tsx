@@ -43,6 +43,8 @@ export default function QuickSMSPage() {
   const [loadingPhoneNumbers, setLoadingPhoneNumbers] = useState(true)
   const [costPerSegment, setCostPerSegment] = useState<number>(0)
   const [loadingPricing, setLoadingPricing] = useState(true)
+  const [needsOptOutCount, setNeedsOptOutCount] = useState(0)
+  const [loadingOptOutCount, setLoadingOptOutCount] = useState(false)
   const [selectedPhoneRateLimit, setSelectedPhoneRateLimit] = useState<{
     max: number
     currentCount: number
@@ -98,6 +100,38 @@ export default function QuickSMSPage() {
 
     loadPricing()
   }, [])
+
+  // Load opt-out count when categories change
+  useEffect(() => {
+    const loadOptOutCount = async () => {
+      if (to.length === 0) {
+        setNeedsOptOutCount(0)
+        return
+      }
+
+      setLoadingOptOutCount(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const categoriesParam = to.join(',')
+        const response = await fetch(`/api/contacts/opt-out-count?categories=${encodeURIComponent(categoriesParam)}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setNeedsOptOutCount(data.needsOptOut || 0)
+        }
+      } catch (error) {
+        console.error('Failed to load opt-out count:', error)
+      } finally {
+        setLoadingOptOutCount(false)
+      }
+    }
+
+    loadOptOutCount()
+  }, [to])
 
   // Load contact categories with counts
   useEffect(() => {
@@ -323,7 +357,21 @@ export default function QuickSMSPage() {
   const selectedContactCount = to.includes('all') 
     ? totalContacts 
     : categories.filter(cat => to.includes(cat.name)).reduce((sum, cat) => sum + cat.count, 0)
-  const estimatedTotalCost = estimatedCostPerMessage * selectedContactCount
+  
+  // Calculate cost with opt-out notice appended for contacts that need it
+  const contactsWithOptOut = needsOptOutCount
+  const contactsWithoutOptOut = selectedContactCount - contactsWithOptOut
+  
+  // Opt-out text that will be appended: "\n\nReply STOP to opt out"
+  const optOutText = "\n\nReply STOP to opt out"
+  const messageWithOptOut = (message || '') + optOutText
+  const segmentsWithOptOut = calculateSegments(messageWithOptOut)
+  const costPerMessageWithOptOut = costPerSegment * segmentsWithOptOut
+  
+  // Total cost = (contacts needing opt-out × message+opt-out cost) + (contacts without opt-out × message cost)
+  const costForContactsWithOptOut = contactsWithOptOut * costPerMessageWithOptOut
+  const costForContactsWithoutOptOut = contactsWithoutOptOut * estimatedCostPerMessage
+  const estimatedTotalCost = costForContactsWithOptOut + costForContactsWithoutOptOut
 
   const handlePreview = () => {
     if (!senderInfo?.hasNumber) {
@@ -867,10 +915,40 @@ export default function QuickSMSPage() {
                         Cost per message: <span className="font-semibold text-gray-800">${estimatedCostPerMessage.toFixed(4)}</span>
                       </span>
                       <span className="text-gray-600">
-                        × {selectedContactCount} contact{selectedContactCount !== 1 ? 's' : ''} = 
-                        <span className="ml-1 font-bold text-blue-900 text-sm">${estimatedTotalCost.toFixed(2)}</span>
+                        × {contactsWithoutOptOut} contact{contactsWithoutOptOut !== 1 ? 's' : ''} = 
+                        <span className="ml-1 font-bold text-blue-900 text-sm">${costForContactsWithoutOptOut.toFixed(2)}</span>
                       </span>
                     </div>
+                    {needsOptOutCount > 0 && (
+                      <>
+                        <div className="mt-1 flex items-center justify-between text-xs">
+                          <span className="text-orange-600">
+                            + Message w/ opt-out ({segmentsWithOptOut} seg): <span className="font-semibold">${costPerMessageWithOptOut.toFixed(4)}</span>
+                          </span>
+                          <span className="text-orange-600">
+                            × {contactsWithOptOut} = <span className="ml-1 font-semibold">${costForContactsWithOptOut.toFixed(2)}</span>
+                          </span>
+                        </div>
+                        <div className="mt-1 pt-1 border-t border-blue-100 flex items-center justify-between text-xs">
+                          <span className="text-gray-700 font-medium">
+                            Total estimated cost:
+                          </span>
+                          <span className="font-bold text-blue-900 text-sm">
+                            ${estimatedTotalCost.toFixed(2)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    {needsOptOutCount === 0 && (
+                      <div className="mt-1 pt-1 border-t border-blue-100 flex items-center justify-between text-xs">
+                        <span className="text-gray-700 font-medium">
+                          Total estimated cost:
+                        </span>
+                        <span className="font-bold text-blue-900 text-sm">
+                          ${estimatedTotalCost.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 
