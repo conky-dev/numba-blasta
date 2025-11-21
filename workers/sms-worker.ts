@@ -363,42 +363,24 @@ try {
           if (twilioError.code === 21211 || twilioError.message.includes("Invalid 'To' Phone Number")) {
             console.log(`[WORKER] 🗑️ Invalid phone number detected: ${to}. Marking contact for deletion and charging invalid attempt fee.`);
             
-            // Charge for invalid number attempt using cached pricing
+            // Charge for invalid number attempt using deduct_credits function
             try {
               if (invalidAttemptCost > 0) {
-                // Get current balance first
-                const balanceResult = await query(
-                  `SELECT sms_balance FROM organizations WHERE id = $1`,
-                  [orgId]
-                );
-                const currentBalance = parseFloat(balanceResult.rows[0]?.sms_balance || '0');
-                const newBalance = currentBalance - invalidAttemptCost;
-
-                // Deduct the cost
-                await query(
-                  `UPDATE organizations 
-                   SET sms_balance = sms_balance - $1, 
-                       updated_at = NOW() 
-                   WHERE id = $2`,
-                  [invalidAttemptCost, orgId]
-                );
-
-                // Log the transaction (use 'adjustment' type since 'charge' is not allowed)
-                await query(
-                  `INSERT INTO billing_transactions 
-                   (org_id, type, amount, balance_before, balance_after, description, created_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+                // Use deduct_credits (same as successful messages) for consistency
+                const deductResult = await query(
+                  `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7) as transaction_id`,
                   [
                     orgId,
-                    'adjustment', // Use 'adjustment' instead of 'charge'
-                    -invalidAttemptCost,
-                    currentBalance,
-                    newBalance,
-                    `Invalid number attempt to ${to}`
+                    invalidAttemptCost,        // p_amount
+                    1,                         // p_sms_count (1 attempt)
+                    invalidAttemptCost,        // p_cost_per_sms (same as total since 1 attempt)
+                    null,                      // p_message_id (will be set later if we save message)
+                    campaignId || null,        // p_campaign_id
+                    `Invalid number attempt to ${to}` // p_description
                   ]
                 );
 
-                console.log(`[WORKER] 💰 Charged $${invalidAttemptCost} for invalid number attempt`);
+                console.log(`[WORKER] 💰 Charged $${invalidAttemptCost} for invalid number attempt (tx: ${deductResult.rows[0]?.transaction_id})`);
               } else {
                 console.warn(`[WORKER] ⚠️  No pricing found for invalid_number_attempt`);
               }
