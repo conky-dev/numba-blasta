@@ -434,8 +434,33 @@ try {
             } catch (err) {
               console.warn('[WORKER] Failed to refresh view after contact deletion:', err);
             }
+            
+            // Save a failed message record to DB for tracking
+            try {
+              await query(
+                `INSERT INTO sms_messages 
+                 (org_id, campaign_id, contact_phone, body, from_number, status, error_message, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, 'failed', $6, NOW(), NOW())`,
+                [
+                  orgId,
+                  campaignId || null,
+                  to,
+                  finalMessage,
+                  fromPhoneNumber || 'unknown',
+                  'Invalid phone number'
+                ]
+              );
+              console.log(`[WORKER] 📝 Saved failed message record for invalid number`);
+            } catch (saveError: any) {
+              console.error(`[WORKER] ❌ Failed to save message record:`, saveError.message);
+            }
+            
+            // Mark job as completed (not failed) since invalid numbers are not retry-able
+            console.log(`[WORKER] ✅ Job completed - invalid number handled gracefully`);
+            return; // Exit gracefully without throwing
           }
           
+          // For other Twilio errors, throw to retry
           throw new Error(`Twilio failed: ${twilioError.message}`);
         }
       } else {
