@@ -366,6 +366,14 @@ try {
             // Charge for invalid number attempt using cached pricing
             try {
               if (invalidAttemptCost > 0) {
+                // Get current balance first
+                const balanceResult = await query(
+                  `SELECT sms_balance FROM organizations WHERE id = $1`,
+                  [orgId]
+                );
+                const currentBalance = parseFloat(balanceResult.rows[0]?.sms_balance || '0');
+                const newBalance = currentBalance - invalidAttemptCost;
+
                 // Deduct the cost
                 await query(
                   `UPDATE organizations 
@@ -378,12 +386,14 @@ try {
                 // Log the transaction
                 await query(
                   `INSERT INTO billing_transactions 
-                   (org_id, amount, type, service_type, description, balance_after, created_at)
-                   VALUES ($1, $2, 'charge', 'invalid_number_attempt', $3, 
-                           (SELECT sms_balance FROM organizations WHERE id = $1), NOW())`,
+                   (org_id, type, amount, balance_before, balance_after, description, created_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
                   [
                     orgId,
-                    invalidAttemptCost,
+                    'charge',
+                    -invalidAttemptCost,
+                    currentBalance,
+                    newBalance,
                     `Invalid number attempt to ${to}`
                   ]
                 );
