@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "worker": "tsx workers/sms-worker.ts"
+    "worker": "tsx workers/index.ts"
   },
   "dependencies": {
     "@types/papaparse": "^5.5.0",
