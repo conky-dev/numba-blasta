@@ -4,6 +4,7 @@
 -- Adds a soft_deleted boolean to the materialized view to mark deleted lists
 -- When a list is deleted, we remove the category from all contacts
 -- The MV will show the category as soft_deleted = TRUE if it has no active contacts
+-- The MV only counts ACTIVE contacts (excludes deleted_at and opted_out_at)
 -- ============================================================================
 
 -- Step 1: Drop and recreate materialized view with soft_deleted column
@@ -17,6 +18,8 @@ SELECT
   -- Mark as soft_deleted if all contacts in this category are deleted/opted-out
   BOOL_AND(deleted_at IS NOT NULL OR opted_out_at IS NOT NULL) as soft_deleted
 FROM contacts
+WHERE deleted_at IS NULL 
+  AND opted_out_at IS NULL
 GROUP BY org_id, unnest(category);
 
 -- Step 2: Recreate unique index for concurrent refresh
@@ -27,14 +30,14 @@ ON contact_category_counts (org_id, category_name);
 REFRESH MATERIALIZED VIEW contact_category_counts;
 
 -- Step 4: Add comment
-COMMENT ON MATERIALIZED VIEW contact_category_counts IS 'Cached category counts per organization. soft_deleted=TRUE when all contacts in category are deleted/opted-out.';
+COMMENT ON MATERIALIZED VIEW contact_category_counts IS 'Cached category counts per organization. Only includes active contacts (excludes deleted_at and opted_out_at). soft_deleted=TRUE when category has been removed from all contacts.';
 
 -- ============================================================================
 -- USAGE:
 -- ============================================================================
 -- Delete a list (removes category from contacts):
 -- UPDATE contacts SET category = array_remove(category, 'ListName') WHERE 'ListName' = ANY(category);
--- Then refresh MV to mark the list as soft_deleted
+-- Then refresh MV - the category will disappear from MV since no contacts have it
 --
 -- Get active lists only:
 -- SELECT category_name, SUM(contact_count) 

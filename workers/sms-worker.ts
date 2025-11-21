@@ -369,7 +369,7 @@ try {
                 // Deduct the cost
                 await query(
                   `UPDATE organizations 
-                   SET balance = balance - $1, 
+                   SET sms_balance = sms_balance - $1, 
                        updated_at = NOW() 
                    WHERE id = $2`,
                   [invalidAttemptCost, orgId]
@@ -380,7 +380,7 @@ try {
                   `INSERT INTO billing_transactions 
                    (org_id, amount, type, service_type, description, balance_after, created_at)
                    VALUES ($1, $2, 'charge', 'invalid_number_attempt', $3, 
-                           (SELECT balance FROM organizations WHERE id = $1), NOW())`,
+                           (SELECT sms_balance FROM organizations WHERE id = $1), NOW())`,
                   [
                     orgId,
                     invalidAttemptCost,
@@ -398,13 +398,25 @@ try {
             
             // Soft delete the contact
             // We use the normalized phone number or the original input to find the contact
-            await query(
-              `UPDATE contacts
-               SET deleted_at = NOW(),
-                   updated_at = NOW()
-               WHERE phone = $1 OR phone = $2`,
-              [to, to.replace(/^\+1/, '')] 
-            );
+            try {
+              const deleteResult = await query(
+                `UPDATE contacts
+                 SET deleted_at = NOW(),
+                     updated_at = NOW()
+                 WHERE org_id = $1 
+                   AND (phone = $2 OR phone = $3)
+                   AND deleted_at IS NULL`,
+                [orgId, to, to.replace(/^\+1/, '')]
+              );
+              
+              if (deleteResult.rowCount && deleteResult.rowCount > 0) {
+                console.log(`[WORKER] 🗑️ Marked ${deleteResult.rowCount} contact(s) as deleted`);
+              } else {
+                console.warn(`[WORKER] ⚠️  No contact found to mark as deleted for ${to}`);
+              }
+            } catch (deleteError: any) {
+              console.error(`[WORKER] ❌ Failed to delete contact:`, deleteError.message);
+            }
             
             // Refresh the category counts view
             try {
