@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import { MdEdit, MdDelete, MdEmail, MdUpload, MdBlock } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import AddEditContactModal from '@/components/contacts/AddEditContactModal'
+import ImportCSVModal from '@/components/contacts/ImportCSVModal'
+import ListsManagement from '@/components/contacts/ListsManagement'
 import { api } from '@/lib/api-client'
 
 interface Category {
@@ -24,6 +27,7 @@ interface Contact {
 }
 
 export default function ContactsPage() {
+  const [activeTab, setActiveTab] = useState<'contacts' | 'lists'>('contacts')
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [importing, setImporting] = useState(false)
@@ -597,35 +601,65 @@ export default function ContactsPage() {
     <div className="p-4 md:p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl md:text-2xl font-semibold text-gray-800">Contacts</h1>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors disabled:bg-green-300 disabled:cursor-not-allowed flex items-center space-x-2"
-          >
-            <MdUpload className="w-5 h-5" />
-            <span>Import CSV</span>
-          </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-          >
-            + Add Contact
-          </button>
-        </div>
+        {activeTab === 'contacts' && (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors disabled:bg-green-300 disabled:cursor-not-allowed flex items-center space-x-2"
+            >
+              <MdUpload className="w-5 h-5" />
+              <span>Import CSV</span>
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+            >
+              + Add Contact
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".csv"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('contacts')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'contacts'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Contacts
+          </button>
+          <button
+            onClick={() => setActiveTab('lists')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'lists'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Lists
+          </button>
+        </nav>
+      </div>
 
-      {/* Import Progress Indicator */}
-      {importing && importProgress && (
+      {activeTab === 'contacts' ? (
+        <>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {/* Import Progress Indicator */}
+          {importing && importProgress && (
         <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-blue-900">Importing Contacts...</h3>
@@ -878,146 +912,18 @@ export default function ContactsPage() {
         </>
       )}
 
-      {/* Add/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-xl font-semibold mb-4">
-              {editingContact ? 'Edit Contact' : 'Add New Contact'}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  First Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="John"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Last Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Doe"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone Number *
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="+1234567890"
-                />
-                <p className="mt-1 text-xs text-gray-500">Use E.164 format (+1234567890)</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="john@example.com"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Categories
-                </label>
-                
-                {/* Add New Category Input */}
-                <div className="mb-3 flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={newCategoryInput}
-                    onChange={(e) => setNewCategoryInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        handleAddNewCategory()
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Add new category..."
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddNewCategory}
-                    className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 transition-colors"
-                  >
-                    Add
-                  </button>
-                </div>
-
-                {/* Existing Categories */}
-                <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
-                  {categories.length === 0 ? (
-                    <p className="text-sm text-gray-500">Loading categories...</p>
-                  ) : (
-                    categories.map((cat) => (
-                      <label key={cat.name} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                        <input
-                          type="checkbox"
-                          checked={formData.category.includes(cat.name)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFormData({ 
-                                ...formData, 
-                                category: [...formData.category, cat.name] 
-                              })
-                            } else {
-                              setFormData({ 
-                                ...formData, 
-                                category: formData.category.filter(c => c !== cat.name) 
-                              })
-                            }
-                          }}
-                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-700">{cat.name}</span>
-                        <span className="text-xs text-gray-400">({cat.count})</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Select one or more categories. Defaults to "Other" if none selected.
-                </p>
-              </div>
-            </div>
-            <div className="flex space-x-4 mt-6">
-              <button
-                onClick={handleSave}
-                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-              >
-                {editingContact ? 'Save Changes' : 'Add Contact'}
-              </button>
-              <button
-                onClick={handleCancel}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddEditContactModal
+        isOpen={showModal}
+        editingContact={editingContact}
+        formData={formData}
+        categories={categories}
+        newCategoryInput={newCategoryInput}
+        onFormDataChange={setFormData}
+        onNewCategoryInputChange={setNewCategoryInput}
+        onAddNewCategory={handleAddNewCategory}
+        onSave={handleSave}
+        onCancel={handleCancel}
+      />
 
       <AlertModal
         isOpen={alertModal.isOpen}
@@ -1034,157 +940,40 @@ export default function ContactsPage() {
         title={confirmModal.title}
         onConfirm={confirmModal.onConfirm}
       />
-
-      {/* Import Confirmation Modal */}
-      {showImportModal && pendingFile && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm CSV Import</h2>
-            
-            <div className="space-y-4 mb-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                <p className="text-sm text-blue-900">
-                  <span className="font-medium">File:</span> {pendingFile.name}
-                </p>
-              </div>
-
-              {/* CSV Column Mapping */}
-              {csvHeaders.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Map CSV Columns
-                  </label>
-                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-md divide-y divide-gray-100">
-                    {csvHeaders.map((header) => (
-                      <div
-                        key={header}
-                        className="flex items-center justify-between px-3 py-2 bg-white"
-                      >
-                        <span className="text-xs font-mono text-gray-700 mr-2">
-                          {header}
-                        </span>
-                        <select
-                          value={fieldMapping[header] || 'ignore'}
-                          onChange={(e) =>
-                            setFieldMapping((prev) => ({
-                              ...prev,
-                              [header]: e.target.value
-                            }))
-                          }
-                          className="ml-2 px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="ignore">Ignore</option>
-                          <option value="phone">Phone (required)</option>
-                          <option value="first_name">First Name</option>
-                          <option value="last_name">Last Name</option>
-                          <option value="email">Email</option>
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Make sure exactly one column is mapped to <strong>Phone</strong>.
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Assign Category
-                </label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  disabled={importing}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
-                >
-                  {categories.length === 0 ? (
-                    <option value="Other">Other (Default)</option>
-                  ) : (
-                    categories.map((category) => (
-                      <option key={category.name} value={category.name}>
-                        {category.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  All imported contacts will be assigned to this category
-                </p>
-                {/* Add new category on the fly for import */}
-                <div className="mt-3 flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value={importNewCategoryInput}
-                    onChange={(e) => setImportNewCategoryInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        const trimmed = importNewCategoryInput.trim()
-                        if (!trimmed) return
-                        const existing = categories.find(
-                          (cat) => cat.name.toLowerCase() === trimmed.toLowerCase()
-                        )
-                        if (!existing) {
-                          setCategories([...categories, { name: trimmed, count: 0 }])
-                        }
-                        setSelectedCategory(trimmed)
-                        setImportNewCategoryInput('')
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
-                    placeholder="Add new category for import..."
-                    disabled={importing}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const trimmed = importNewCategoryInput.trim()
-                      if (!trimmed) return
-                      const existing = categories.find(
-                        (cat) => cat.name.toLowerCase() === trimmed.toLowerCase()
-                      )
-                      if (!existing) {
-                        setCategories([...categories, { name: trimmed, count: 0 }])
-                      }
-                      setSelectedCategory(trimmed)
-                      setImportNewCategoryInput('')
-                    }}
-                    disabled={importing}
-                    className="px-3 py-2 bg-green-500 text-white text-xs font-medium rounded-md hover:bg-green-600 transition-colors disabled:opacity-50"
-                  >
-                    Add & Select
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
-                <p className="text-xs text-gray-700">
-                  <span className="font-medium">Expected CSV format:</span><br />
-                  <code className="text-xs bg-gray-100 px-1 rounded">first_name, last_name, phone, email</code>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={handleCancelImport}
-                disabled={importing}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmImport}
-                disabled={importing}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                {importing ? 'Importing...' : 'Import'}
-              </button>
-            </div>
-          </div>
-        </div>
+        </>
+      ) : (
+        <ListsManagement categories={categories} onRefresh={loadCategories} />
       )}
+
+      <ImportCSVModal
+        isOpen={showImportModal}
+        pendingFile={pendingFile}
+        csvHeaders={csvHeaders}
+        fieldMapping={fieldMapping}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        importNewCategoryInput={importNewCategoryInput}
+        importing={importing}
+        onFieldMappingChange={(header, value) => 
+          setFieldMapping((prev) => ({ ...prev, [header]: value }))
+        }
+        onSelectedCategoryChange={setSelectedCategory}
+        onImportNewCategoryInputChange={setImportNewCategoryInput}
+        onAddNewCategory={() => {
+          const trimmed = importNewCategoryInput.trim()
+          if (!trimmed) return
+          const existing = categories.find(
+            (cat) => cat.name.toLowerCase() === trimmed.toLowerCase()
+          )
+          if (!existing) {
+            setCategories([...categories, { name: trimmed, count: 0 }])
+          }
+          setSelectedCategory(trimmed)
+          setImportNewCategoryInput('')
+        }}
+        onConfirm={handleConfirmImport}
+        onCancel={handleCancelImport}
+      />
     </div>
   )
 }
