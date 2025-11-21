@@ -13,35 +13,33 @@ export async function DELETE(
 
     const listName = decodeURIComponent(params.listName)
 
-    // Soft-delete all contacts in this list by setting soft_deleted flag
-    // Keep the category in their array so the list still shows up
-    // soft_deleted contacts won't appear in the MV (so they won't show in dropdowns/filters)
-    // but you can still see them in the Contacts table and Lists stats
+    // Remove the category from all contacts in this list
+    // The contacts remain visible, they just lose this category
+    // The MV will mark this category as soft_deleted when refreshed
     const result = await query(
       `
       UPDATE contacts
       SET 
-        soft_deleted = TRUE,
+        category = array_remove(category, $2),
         updated_at = NOW()
       WHERE org_id = $1 
         AND $2 = ANY(category)
-        AND soft_deleted = FALSE  -- Only update contacts that aren't already soft-deleted
       RETURNING id
       `,
       [authContext.orgId, listName]
     )
 
-    // Refresh the materialized view to reflect the change
+    // Refresh the materialized view to mark the category as soft_deleted
     await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts')
 
     return NextResponse.json({ 
       deleted: result.rowCount,
-      message: `Successfully marked ${result.rowCount} contact(s) in list "${listName}" as soft-deleted. The list will remain visible with these contacts marked as deleted.`
+      message: `Successfully removed category "${listName}" from ${result.rowCount} contact(s). The contacts remain visible in your list.`
     })
   } catch (error: any) {
     console.error('[DELETE-LIST] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to delete list contacts' },
+      { error: 'Failed to delete list' },
       { status: 500 }
     )
   }

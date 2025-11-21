@@ -15,9 +15,8 @@ interface ListStats {
   total_contacts: number
   opted_out: number
   marked_for_deletion: number
-  soft_deleted: number
   active_contacts: number
-  // Computed: soft_deleted_total = soft_deleted + marked_for_deletion
+  is_soft_deleted: boolean
 }
 
 interface ListsManagementProps {
@@ -95,8 +94,8 @@ export default function ListsManagement({ categories, onRefresh }: ListsManageme
   const handleDeleteList = async (listName: string) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Delete List Contacts',
-      message: `Are you sure you want to mark all contacts in the list "${listName}" for deletion? The list category will remain visible, but all contacts in it will be soft-deleted and won't receive messages. This action cannot be undone.`,
+      title: 'Delete List',
+      message: `Are you sure you want to delete the list "${listName}"? This will remove the category from all contacts, but the contacts themselves will remain visible. This action cannot be undone.`,
       onConfirm: async () => {
         setDeletingList(listName)
         try {
@@ -111,7 +110,7 @@ export default function ListsManagement({ categories, onRefresh }: ListsManageme
             const data = await response.json()
             setAlertModal({
               isOpen: true,
-              message: data.message || `Successfully deleted contacts in list "${listName}"`,
+              message: data.message || `Successfully deleted list "${listName}"`,
               title: 'Success',
               type: 'success'
             })
@@ -121,16 +120,16 @@ export default function ListsManagement({ categories, onRefresh }: ListsManageme
             const error = await response.json()
             setAlertModal({
               isOpen: true,
-              message: error.error || 'Failed to delete list contacts',
+              message: error.error || 'Failed to delete list',
               title: 'Error',
               type: 'error'
             })
           }
         } catch (error) {
-          console.error('Failed to delete list contacts:', error)
+          console.error('Failed to delete list:', error)
           setAlertModal({
             isOpen: true,
-            message: 'Failed to delete list contacts. Please try again.',
+            message: 'Failed to delete list. Please try again.',
             title: 'Error',
             type: 'error'
           })
@@ -199,12 +198,17 @@ export default function ListsManagement({ categories, onRefresh }: ListsManageme
               ) : (
                 listStats.map((stat) => {
                   // Combine soft_deleted and marked_for_deletion for display
-                  const totalSoftDeleted = stat.soft_deleted + stat.marked_for_deletion
+                  const totalSoftDeleted = stat.marked_for_deletion
                   
                   return (
-                    <tr key={stat.category} className="hover:bg-gray-50">
+                    <tr key={stat.category} className={`hover:bg-gray-50 ${stat.is_soft_deleted ? 'bg-gray-100 opacity-60' : ''}`}>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{stat.category}</div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-gray-900">{stat.category}</span>
+                          {stat.is_soft_deleted && (
+                            <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-full">Deleted</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">{stat.total_contacts}</div>
@@ -256,15 +260,15 @@ export default function ListsManagement({ categories, onRefresh }: ListsManageme
       <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <h3 className="text-sm font-medium text-blue-900 mb-2">About Lists</h3>
         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-          <li><strong>Total</strong>: All contacts in this list</li>
+          <li><strong>Total</strong>: All contacts that have (or had) this category</li>
           <li><strong>Active</strong>: Contacts that can receive messages</li>
           <li><strong>Opted Out</strong>: Contacts who have opted out of receiving messages</li>
-          <li><strong>Soft Deleted</strong>: Contacts marked as deleted (user-initiated or invalid numbers)</li>
+          <li><strong>Soft Deleted</strong>: Contacts with invalid numbers or delivery errors</li>
         </ul>
         <p className="mt-2 text-xs text-blue-700">
-          The "Delete" action marks all contacts in a list as soft-deleted. These contacts won't appear in 
-          dropdowns/filters but remain visible here and in the Contacts table. The list category stays intact 
-          and no data is permanently lost.
+          The "Delete" action removes the category from all contacts in that list. The contacts remain 
+          visible in your Contacts tab, they just won't have that category anymore. Lists marked as "Deleted" 
+          won't appear in dropdowns or filters.
         </p>
       </div>
 
