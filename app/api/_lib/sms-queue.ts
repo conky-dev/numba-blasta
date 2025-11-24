@@ -51,6 +51,7 @@ export interface SMSJobData {
   campaignId?: string;
   variables?: Record<string, any>;
   fromNumber?: string; // Specific phone number to send from
+  isMessengerReply?: boolean; // True for 1-on-1 messenger replies (no opt-out needed)
 }
 
 // Add job to queue

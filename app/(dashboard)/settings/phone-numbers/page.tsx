@@ -49,7 +49,7 @@ export default function PhoneNumbersPage() {
   const [bundles, setBundles] = useState<Array<{ sid: string; friendlyName: string; status: string }>>([])
   const [verificationForm, setVerificationForm] = useState({
     // Step 1: Business Information
-    bundleSid: '',
+    // bundleSid is now provided by environment variable on the backend
     legalEntityName: '',
     websiteUrl: '',
     businessAddress: '',
@@ -229,10 +229,10 @@ export default function PhoneNumbersPage() {
   const handleNextStep = () => {
     // Validate Step 1 fields
     if (verificationStep === 1) {
-      if (!verificationForm.bundleSid || !verificationForm.legalEntityName || !verificationForm.websiteUrl) {
+      if (!verificationForm.legalEntityName || !verificationForm.websiteUrl) {
         setAlertModal({
           isOpen: true,
-          message: 'Please fill in all required fields: Bundle SID, Legal Entity Name, and Website URL.',
+          message: 'Please fill in all required fields: Legal Entity Name and Website URL.',
           title: 'Missing Information',
           type: 'error'
         })
@@ -262,10 +262,10 @@ export default function PhoneNumbersPage() {
     if (!verificationModal.phoneNumberId) return
 
     // Validate Step 1 required fields
-    if (!verificationForm.bundleSid || !verificationForm.legalEntityName || !verificationForm.websiteUrl) {
+    if (!verificationForm.legalEntityName || !verificationForm.websiteUrl) {
       setAlertModal({
         isOpen: true,
-        message: 'Please fill in all required fields from Step 1: Bundle SID, Legal Entity Name, and Website URL.',
+        message: 'Please fill in all required fields from Step 1: Legal Entity Name and Website URL.',
         title: 'Missing Information',
         type: 'error'
       })
@@ -321,7 +321,6 @@ export default function PhoneNumbersPage() {
 
       // Reset form and step
       setVerificationForm({
-        bundleSid: '',
         legalEntityName: '',
         websiteUrl: '',
         businessAddress: '',
@@ -371,7 +370,6 @@ export default function PhoneNumbersPage() {
     setVerificationStep(1)
     // Reset form when opening
     setVerificationForm({
-      bundleSid: '',
       legalEntityName: '',
       websiteUrl: '',
       businessAddress: '',
@@ -729,31 +727,6 @@ export default function PhoneNumbersPage() {
 
             {verificationStep === 1 && (
             <div className="space-y-4">
-              {/* Business Profile / Bundle SID */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Business Profile (Bundle SID) *
-                </label>
-                <input
-                  type="text"
-                  value={verificationForm.bundleSid}
-                  onChange={(e) => setVerificationForm({ ...verificationForm, bundleSid: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="BUff20f8e61db20628445a2368f1bf5320"
-                />
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-gray-500">
-                    A Bundle SID is a compliance bundle identifier (starts with "BU"). This contains your verified business information.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    <strong>How to find it:</strong> Go to your messaging provider's console → Trust Hub → Bundles. Copy the Bundle SID (starts with "BU") or search by the Friendly Name.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    <strong>Don't have one?</strong> You'll need to create a Trust Hub Bundle in your messaging provider's console first with your business information.
-                  </p>
-                </div>
-              </div>
-
               {/* Legal Entity Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -933,12 +906,12 @@ export default function PhoneNumbersPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Select opt-in method</option>
+                  <option value="verbal">Verbal Consent</option>
                   <option value="web_form">Web Form</option>
                   <option value="paper_form">Paper Form</option>
-                  <option value="text_message">Text Message (SMS)</option>
-                  <option value="verbal">Verbal Consent</option>
-                  <option value="mobile_app">Mobile App</option>
-                  <option value="other">Other</option>
+                  <option value="via_text">Via Text Message (SMS)</option>
+                  <option value="mobile_qr_code">Mobile QR Code</option>
+                  <option value="import">Import</option>
                 </select>
               </div>
 

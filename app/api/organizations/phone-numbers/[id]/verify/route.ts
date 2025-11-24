@@ -5,6 +5,7 @@ import twilio from 'twilio';
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
+const defaultBundleSid = 'BUac3d460dacc71e86d165ea1f0fc75fce99'; // Hardcoded Trust Hub Bundle SID
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +49,7 @@ export async function POST(
     
     const {
       // Step 1: Business Information
-      bundleSid, // Business profile Bundle SID
+      // bundleSid is now provided by environment variable, not from request
       legalEntityName,
       websiteUrl,
       businessAddress,
@@ -71,6 +72,9 @@ export async function POST(
       businessRegistrationCountry,
       entityType,
     } = body;
+    
+    // Use default Bundle SID from environment variable
+    const bundleSid = defaultBundleSid;
 
     // Debug: Log after destructuring
     // Note: businessState and address/contact fields are received but not sent
@@ -334,18 +338,17 @@ export async function POST(
         optInType: optInType,
         optInImageUrls: optInImageUrls,
         useCaseCategories: [finalUseCaseCategory],
-        useCaseDescription: useCaseDescription,
         useCaseSummary: useCaseDescription,
         productionMessageSample: messageContentExamples || useCaseDescription,
-        ...(messageContentExamples && { messageContentExamples }),
-        // BRN fields if provided
-        ...(businessRegistrationNumber?.trim() && businessRegistrationType?.trim() && businessRegistrationCountry?.trim() && entityType?.trim() && {
-          businessRegistrationNumber: businessRegistrationNumber.trim(),
-          businessRegistrationAuthority: businessRegistrationType.trim(),
-          businessRegistrationCountry: (businessRegistrationCountry.trim().length === 2) ? businessRegistrationCountry.trim().toUpperCase() : businessRegistrationCountry.trim(),
-          businessType: entityType.trim(),
-        }),
       };
+      
+      // BRN fields (only include when NOT using customerProfileSid)
+      const brnFields = (businessRegistrationNumber?.trim() && businessRegistrationType?.trim() && businessRegistrationCountry?.trim() && entityType?.trim()) ? {
+        businessRegistrationNumber: businessRegistrationNumber.trim(),
+        businessRegistrationAuthority: businessRegistrationType.trim(),
+        businessRegistrationCountry: (businessRegistrationCountry.trim().length === 2) ? businessRegistrationCountry.trim().toUpperCase() : businessRegistrationCountry.trim(),
+        businessType: entityType.trim(),
+      } : {};
       
       // Address and contact fields (used when not using customerProfileSid or when PCP fails)
       const addressContactFields = {
@@ -365,23 +368,42 @@ export async function POST(
       let verificationPayload: any;
       
       if (bundleSid) {
-        // First attempt: with customerProfileSid, without address/contact fields
+        // First attempt: with customerProfileSid, without address/contact fields and BRN fields
+        // (those come from the Trust Hub Bundle)
+        // Use REST API directly to avoid SDK field name transformations
         verificationPayload = {
-          ...basePayload,
-          customerProfileSid: bundleSid,
+          BusinessName: legalEntityName,
+          BusinessWebsite: websiteUrl,
+          TollfreePhoneNumberSid: actualPhoneSid,
+          NotificationEmail: notificationEmail,
+          MessageVolume: twilioMessageVolume,
+          OptInType: optInType,
+          OptInImageUrls: optInImageUrls,
+          UseCaseCategories: [finalUseCaseCategory],
+          UseCaseSummary: useCaseDescription,
+          ProductionMessageSample: messageContentExamples || useCaseDescription,
+          CustomerProfileSid: bundleSid,
         };
         
         console.log('[TOLL-FREE VERIFICATION] Attempting with customerProfileSid:', bundleSid);
+        console.log('[TOLL-FREE VERIFICATION] Full payload being sent:', JSON.stringify(verificationPayload, null, 2));
         
         try {
-          verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
+          // Use direct REST API call with PascalCase field names
+          const response = await client.request({
+            method: 'post',
+            uri: `https://messaging.twilio.com/v1/Messaging/TollfreeVerifications`,
+            data: verificationPayload,
+          });
+          verification = response;
         } catch (error: any) {
-          // If error is about PCP, retry without customerProfileSid but with address/contact fields
+          // If error is about PCP, retry without customerProfileSid but with address/contact and BRN fields
           if (error.message?.includes('Primary Profiles') || error.message?.includes('PCP') || error.message?.includes('ISV Starters or Secondary')) {
-            console.log('[TOLL-FREE VERIFICATION] PCP detected, retrying without customerProfileSid but with address/contact fields');
+            console.log('[TOLL-FREE VERIFICATION] PCP detected, retrying without customerProfileSid but with address/contact and BRN fields');
             verificationPayload = {
               ...basePayload,
               ...addressContactFields,
+              ...brnFields,
             };
             verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
           } else {
@@ -389,12 +411,13 @@ export async function POST(
           }
         }
       } else {
-        // No bundleSid provided, use address/contact fields
+        // No bundleSid provided, use address/contact and BRN fields
         verificationPayload = {
           ...basePayload,
           ...addressContactFields,
+          ...brnFields,
         };
-        console.log('[TOLL-FREE VERIFICATION] No bundleSid provided, using address/contact fields');
+        console.log('[TOLL-FREE VERIFICATION] No bundleSid provided, using address/contact and BRN fields');
         verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
       }
       
@@ -445,6 +468,7 @@ export async function POST(
         moreInfo: twilioError.moreInfo,
         details: twilioError.details,
         stack: twilioError.stack,
+        fullError: JSON.stringify(twilioError, null, 2),
         note: 'Address and contact fields come from Trust Hub profile (customerProfileSid) and were not included in payload'
       });
 
