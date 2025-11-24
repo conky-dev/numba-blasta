@@ -101,17 +101,18 @@ try {
   async (job: Job<SMSJobData>) => {
     console.log(`[SMS-WORKER] Processing job ${job.id} for ${job.data.to}`);
     
-    const { to, message, orgId, userId, contactId, campaignId, templateId, fromNumber } = job.data;
+    const { to, message, orgId, userId, contactId, campaignId, templateId, fromNumber, isMessengerReply } = job.data;
     
     try {
-      // Step 1: Decide message body (append STOP text on first send to contact)
+      // Step 1: Decide message body (append STOP text based on message type)
       // We need to do this first to calculate the correct cost
       let finalMessage = message;
 
-      if (contactId) {
+      // For bulk/campaign/quick messages: ALWAYS include opt-out verbiage
+      // For messenger (1-on-1): NEVER include opt-out verbiage
+      if (!isMessengerReply && contactId) {
         try {
-          // Atomically mark that we've sent the opt-out notice if this is the first time.
-          // Only the first concurrent update will get a row back.
+          // Check if this contact has already received the opt-out notice
           const noticeResult = await query(
             `UPDATE contacts
              SET opt_out_notice_sent_at = NOW(),
@@ -124,10 +125,12 @@ try {
 
           const isFirstOutbound = noticeResult.rows.length > 0;
 
-          if (isFirstOutbound && !/stop to unsubscribe/i.test(message)) {
+          // Always append opt-out text for bulk/quick/campaign messages if not already present
+          if (!/stop to unsubscribe/i.test(message) && !/reply stop/i.test(message)) {
             finalMessage = `${message.trim()}\n\nReply STOP to unsubscribe.`;
+            const messageType = campaignId ? 'campaign' : 'bulk/quick';
             console.log(
-              `[WORKER] Appended STOP verbiage for first outbound to contact ${contactId}`
+              `[WORKER] Appended STOP verbiage for ${messageType} message to contact ${contactId}${isFirstOutbound ? ' (first outbound)' : ''}`
             );
           }
         } catch (checkError: any) {
@@ -136,6 +139,9 @@ try {
             checkError?.message || checkError
           );
         }
+      } else if (isMessengerReply) {
+        // Messenger message - do NOT append opt-out verbiage
+        console.log('[WORKER] Messenger reply - no opt-out verbiage appended');
       }
 
       // Step 2: Calculate cost based on message segments and pricing

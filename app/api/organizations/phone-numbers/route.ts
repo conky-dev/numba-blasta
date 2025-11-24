@@ -53,8 +53,8 @@ export async function GET(request: NextRequest) {
       result.rows.map(async (row) => {
         let status = row.status || 'none';
         
-        // If status is awaiting_verification and we have a phone_sid, check Twilio status
-        if ((status === 'awaiting_verification' || status === 'none') && row.phone_sid && accountSid && authToken) {
+        // If status is awaiting_verification, failed, or none and we have a phone_sid, check Twilio status
+        if ((status === 'awaiting_verification' || status === 'failed' || status === 'none') && row.phone_sid && accountSid && authToken) {
           try {
             const client = twilio(accountSid, authToken);
             

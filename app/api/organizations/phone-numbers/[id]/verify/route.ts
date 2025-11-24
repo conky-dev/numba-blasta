@@ -5,6 +5,7 @@ import twilio from 'twilio';
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
+const defaultBundleSid = 'BUac3d460dacc71e86d165ea1f0fc75fce99'; // Hardcoded Trust Hub Bundle SID
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +49,7 @@ export async function POST(
     
     const {
       // Step 1: Business Information
-      bundleSid, // Business profile Bundle SID
+      // bundleSid is now provided by environment variable, not from request
       legalEntityName,
       websiteUrl,
       businessAddress,
@@ -71,6 +72,9 @@ export async function POST(
       businessRegistrationCountry,
       entityType,
     } = body;
+    
+    // Use default Bundle SID from environment variable
+    const bundleSid = defaultBundleSid;
 
     // Debug: Log after destructuring
     // Note: businessState and address/contact fields are received but not sent
@@ -160,7 +164,7 @@ export async function POST(
 
     // Get the phone number record
     const phoneNumberResult = await query(
-      `SELECT id, phone_number, phone_sid, org_id, status
+      `SELECT id, phone_number, phone_sid, org_id, status, verification_sid
        FROM phone_numbers
        WHERE id = $1 AND org_id = $2`,
       [phoneNumberId, orgId]
@@ -175,12 +179,42 @@ export async function POST(
 
     const phoneNumber = phoneNumberResult.rows[0];
     const phoneSid = phoneNumber.phone_sid;
+    let existingVerificationSid = phoneNumber.verification_sid; // Check if we have an existing verification in DB
 
     if (!phoneSid) {
       return NextResponse.json(
         { error: 'Phone number SID not found. Please reprovision the number.' },
         { status: 400 }
       );
+    }
+    
+    // Initialize Twilio client early to check for existing verifications
+    const client = twilio(accountSid, authToken);
+    
+    // If we don't have a verification_sid in DB, check Twilio directly
+    if (!existingVerificationSid) {
+      console.log('[TOLL-FREE VERIFICATION] No verification_sid in DB, checking Twilio for existing verifications...');
+      try {
+        const existingVerifications = await client.messaging.v1.tollfreeVerifications.list({
+          tollfreePhoneNumberSid: phoneSid,
+          limit: 1
+        });
+        
+        if (existingVerifications.length > 0) {
+          existingVerificationSid = existingVerifications[0].sid;
+          console.log('[TOLL-FREE VERIFICATION] Found existing verification on Twilio:', existingVerificationSid);
+          
+          // Update DB with the verification SID
+          await query(
+            `UPDATE phone_numbers SET verification_sid = $1 WHERE id = $2`,
+            [existingVerificationSid, phoneNumberId]
+          );
+        } else {
+          console.log('[TOLL-FREE VERIFICATION] No existing verifications found on Twilio');
+        }
+      } catch (listError: any) {
+        console.error('[TOLL-FREE VERIFICATION] Error listing existing verifications:', listError.message);
+      }
     }
 
     // Validate that phoneSid is actually a phone number SID (starts with "PN"), not a Bundle SID (starts with "BU")
@@ -255,19 +289,17 @@ export async function POST(
     }
 
     // Map our volume range strings to Twilio's MessageVolume enum values
-    // Twilio expects: '10', '100', '1,000', '10,000', '100,000', '250,000', '500,000', '750,000', '1,000,000', '5,000,000', '10,000,000+'
+    // From docs: '10', '100', '1,000', '10,000', '100,000', '250,000', '500,000', '750,000', '1,000,000', '5,000,000', '10,000,000+'
+    // MUST use exact enum values WITH COMMAS for numbers >= 1,000
     const volumeMap: Record<string, string> = {
       '0-1000': '1,000',
       '1001-10000': '10,000',
-      '10001-50000': '10,000', // Map to closest
+      '10001-50000': '10,000',
       '50001-100000': '100,000',
-      '100001-500000': '250,000', // Map to closest
+      '100001-500000': '250,000',
       '500001+': '1,000,000',
     };
     const twilioMessageVolume = volumeMap[estimatedMonthlyVolume] || '10,000';
-
-    // Initialize Twilio client
-    const client = twilio(accountSid, authToken);
 
     console.log('[TOLL-FREE VERIFICATION] Submitting verification for:', {
       phoneNumberId,
@@ -334,18 +366,17 @@ export async function POST(
         optInType: optInType,
         optInImageUrls: optInImageUrls,
         useCaseCategories: [finalUseCaseCategory],
-        useCaseDescription: useCaseDescription,
         useCaseSummary: useCaseDescription,
         productionMessageSample: messageContentExamples || useCaseDescription,
-        ...(messageContentExamples && { messageContentExamples }),
-        // BRN fields if provided
-        ...(businessRegistrationNumber?.trim() && businessRegistrationType?.trim() && businessRegistrationCountry?.trim() && entityType?.trim() && {
-          businessRegistrationNumber: businessRegistrationNumber.trim(),
-          businessRegistrationAuthority: businessRegistrationType.trim(),
-          businessRegistrationCountry: (businessRegistrationCountry.trim().length === 2) ? businessRegistrationCountry.trim().toUpperCase() : businessRegistrationCountry.trim(),
-          businessType: entityType.trim(),
-        }),
       };
+      
+      // BRN fields (only include when NOT using customerProfileSid)
+      const brnFields = (businessRegistrationNumber?.trim() && businessRegistrationType?.trim() && businessRegistrationCountry?.trim() && entityType?.trim()) ? {
+        businessRegistrationNumber: businessRegistrationNumber.trim(),
+        businessRegistrationAuthority: businessRegistrationType.trim(),
+        businessRegistrationCountry: (businessRegistrationCountry.trim().length === 2) ? businessRegistrationCountry.trim().toUpperCase() : businessRegistrationCountry.trim(),
+        businessType: entityType.trim(),
+      } : {};
       
       // Address and contact fields (used when not using customerProfileSid or when PCP fails)
       const addressContactFields = {
@@ -364,38 +395,85 @@ export async function POST(
       // If it fails with PCP error, retry without customerProfileSid but with address/contact fields
       let verificationPayload: any;
       
-      if (bundleSid) {
-        // First attempt: with customerProfileSid, without address/contact fields
-        verificationPayload = {
-          ...basePayload,
-          customerProfileSid: bundleSid,
-        };
+      // Check if we're editing an existing verification or creating a new one
+      if (existingVerificationSid) {
+        console.log('[TOLL-FREE VERIFICATION] Found existing verification SID:', existingVerificationSid);
         
-        console.log('[TOLL-FREE VERIFICATION] Attempting with customerProfileSid:', bundleSid);
-        
+        // Check if this verification is editable
         try {
-          verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
-        } catch (error: any) {
-          // If error is about PCP, retry without customerProfileSid but with address/contact fields
-          if (error.message?.includes('Primary Profiles') || error.message?.includes('PCP') || error.message?.includes('ISV Starters or Secondary')) {
-            console.log('[TOLL-FREE VERIFICATION] PCP detected, retrying without customerProfileSid but with address/contact fields');
+          const existingVerification = await client.messaging.v1
+            .tollfreeVerifications(existingVerificationSid)
+            .fetch();
+          
+          const isEditable = existingVerification.editAllowed || false;
+          console.log('[TOLL-FREE VERIFICATION] Existing verification editable:', isEditable);
+          
+          if (isEditable) {
+            // Use SDK update method for editing - must use camelCase with uppercase enums
             verificationPayload = {
-              ...basePayload,
-              ...addressContactFields,
+              messageVolume: twilioMessageVolume,
+              optInType: optInType.toUpperCase(), // MUST be uppercase enum
+              optInImageUrls: optInImageUrls.length > 0 ? optInImageUrls : [websiteUrl + '/opt-in'],
+              useCaseCategories: [finalUseCaseCategory], // Already uppercase
+              useCaseSummary: useCaseDescription,
+              productionMessageSample: messageContentExamples || useCaseDescription,
+              editReason: 'Updated verification information based on previous rejection feedback',
             };
-            verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
+            
+            console.log('[TOLL-FREE VERIFICATION] Updating existing verification with payload:', JSON.stringify(verificationPayload, null, 2));
+            
+            verification = await client.messaging.v1
+              .tollfreeVerifications(existingVerificationSid)
+              .update(verificationPayload);
+            console.log('[TOLL-FREE VERIFICATION] ✅ Update successful! Response:', JSON.stringify(verification, null, 2));
           } else {
-            throw error;
+            console.log('[TOLL-FREE VERIFICATION] ⚠️ Verification not editable (edit_allowed=false)');
+            console.log('[TOLL-FREE VERIFICATION] Cannot update or create new - verification exists but is locked');
+            return NextResponse.json(
+              { error: 'This verification cannot be edited. The verification already exists and the edit window has expired. Please contact Twilio support.' },
+              { status: 400 }
+            );
           }
+        } catch (fetchError: any) {
+          console.error('[TOLL-FREE VERIFICATION] Failed to fetch existing verification:', fetchError.message);
+          // If we can't fetch it, it might not exist anymore - proceed to create new
+          await query(
+            `UPDATE phone_numbers SET verification_sid = NULL WHERE id = $1`,
+            [phoneNumberId]
+          );
         }
-      } else {
-        // No bundleSid provided, use address/contact fields
+      }
+      
+      // Create new verification if we didn't update
+      if (!verification) {
+        // Don't use customerProfileSid - send all fields directly instead
+        // This avoids PCP (Primary Customer Profile) issues
+        console.log('[TOLL-FREE VERIFICATION] Creating verification WITHOUT customerProfileSid');
+        console.log('[TOLL-FREE VERIFICATION] Will include all business address and contact fields');
+        
         verificationPayload = {
           ...basePayload,
           ...addressContactFields,
+          ...brnFields,
         };
-        console.log('[TOLL-FREE VERIFICATION] No bundleSid provided, using address/contact fields');
-        verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
+        
+        console.log('[TOLL-FREE VERIFICATION] Full SDK payload:', JSON.stringify(verificationPayload, null, 2));
+        
+        try {
+          verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
+          console.log('[TOLL-FREE VERIFICATION] Success! Verification created:', verification.sid);
+        } catch (error: any) {
+          console.error('[TOLL-FREE VERIFICATION] Twilio API error:', {
+            message: error.message,
+            status: error.status,
+            code: error.code,
+            moreInfo: error.moreInfo,
+            details: error.details,
+            stack: error.stack,
+            fullError: JSON.stringify(error, null, 2),
+          });
+          throw error;
+        }
       }
       
       console.log('[TOLL-FREE VERIFICATION] Payload sent:', JSON.stringify(verificationPayload, null, 2));
@@ -445,6 +523,7 @@ export async function POST(
         moreInfo: twilioError.moreInfo,
         details: twilioError.details,
         stack: twilioError.stack,
+        fullError: JSON.stringify(twilioError, null, 2),
         note: 'Address and contact fields come from Trust Hub profile (customerProfileSid) and were not included in payload'
       });
 
@@ -547,29 +626,66 @@ export async function GET(
 
     try {
       // Fetch verification status from Twilio using REST API
+      console.log('[TOLL-FREE VERIFICATION GET] Fetching verifications for phone SID:', phoneSid);
       const verificationsResponse = await client.request({
         method: 'get',
-        uri: `/v1/Messaging/TollFreeVerifications`,
+        uri: `https://messaging.twilio.com/v1/Tollfree/Verifications`,
         params: {
-          PhoneNumberSid: phoneSid,
+          TollfreePhoneNumberSid: phoneSid,
           PageSize: 1,
         },
       });
 
-      const verifications = verificationsResponse.verifications || verificationsResponse || [];
+      console.log('[TOLL-FREE VERIFICATION GET] Raw response:', JSON.stringify(verificationsResponse, null, 2));
+      
+      // Handle the nested response structure from client.request()
+      const responseBody = verificationsResponse.body || verificationsResponse;
+      const verifications = responseBody.verifications || [];
+      console.log('[TOLL-FREE VERIFICATION GET] Found verifications count:', verifications.length);
 
       if (verifications.length > 0) {
         const verification = verifications[0];
-        const verificationStatus = verification.Status || verification.status;
+        console.log('[TOLL-FREE VERIFICATION GET] First verification:', JSON.stringify(verification, null, 2));
+        const verificationStatus = verification.status; // Using snake_case as that's what Twilio returns
         return NextResponse.json(
           {
             verification: {
-              sid: verification.Sid || verification.sid,
+              sid: verification.sid,
               status: verificationStatus,
               phoneNumber: phoneNumber.phone_number,
-              rejectionReason: verification.RejectionReason || verification.rejectionReason,
+              rejectionReason: verification.rejection_reason,
+              rejectionReasons: verification.rejection_reasons || null,
+              editAllowed: verification.edit_allowed || false,
+              editExpiration: verification.edit_expiration || null,
+              // Include all the form fields so we can pre-populate
+              businessName: verification.business_name,
+              businessWebsite: verification.business_website,
+              messageVolume: verification.message_volume,
+              optInType: verification.opt_in_type,
+              optInImageUrls: verification.opt_in_image_urls || [],
+              useCaseCategories: verification.use_case_categories || [],
+              useCaseSummary: verification.use_case_summary,
+              productionMessageSample: verification.production_message_sample,
+              // Business address fields
+              businessStreetAddress: verification.business_street_address,
+              businessCity: verification.business_city,
+              businessStateProvinceRegion: verification.business_state_province_region,
+              businessPostalCode: verification.business_postal_code,
+              businessCountry: verification.business_country,
+              // Contact fields
+              businessContactFirstName: verification.business_contact_first_name,
+              businessContactLastName: verification.business_contact_last_name,
+              businessContactEmail: verification.business_contact_email,
+              businessContactPhone: verification.business_contact_phone,
+              // BRN fields
+              businessRegistrationNumber: verification.business_registration_number,
+              businessRegistrationAuthority: verification.business_registration_authority,
+              businessRegistrationCountry: verification.business_registration_country,
+              businessType: verification.business_type,
               // Map Twilio status to our status
               ourStatus: verificationStatus === 'APPROVED' ? 'verified' :
+                        verificationStatus === 'PENDING_REVIEW' ? 'awaiting_verification' :
+                        verificationStatus === 'TWILIO_REJECTED' ? 'failed' :
                         verificationStatus === 'PENDING' ? 'awaiting_verification' :
                         verificationStatus === 'REJECTED' ? 'failed' : 'awaiting_verification',
             },

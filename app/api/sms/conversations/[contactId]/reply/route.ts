@@ -64,6 +64,7 @@ export async function POST(
       orgId,
       userId,
       contactId,
+      isMessengerReply: true, // Flag this as a messenger reply (no opt-out needed)
     });
 
     const queueTime = Date.now() - queueStartTime;

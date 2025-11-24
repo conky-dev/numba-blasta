@@ -47,9 +47,10 @@ export default function PhoneNumbersPage() {
   const [verificationStep, setVerificationStep] = useState(1)
   const [loadingBundles, setLoadingBundles] = useState(false)
   const [bundles, setBundles] = useState<Array<{ sid: string; friendlyName: string; status: string }>>([])
+  const [rejectionReasons, setRejectionReasons] = useState<Array<{ code: number; reason: string }> | null>(null)
   const [verificationForm, setVerificationForm] = useState({
     // Step 1: Business Information
-    bundleSid: '',
+    // bundleSid is now provided by environment variable on the backend
     legalEntityName: '',
     websiteUrl: '',
     businessAddress: '',
@@ -229,10 +230,10 @@ export default function PhoneNumbersPage() {
   const handleNextStep = () => {
     // Validate Step 1 fields
     if (verificationStep === 1) {
-      if (!verificationForm.bundleSid || !verificationForm.legalEntityName || !verificationForm.websiteUrl) {
+      if (!verificationForm.legalEntityName || !verificationForm.websiteUrl) {
         setAlertModal({
           isOpen: true,
-          message: 'Please fill in all required fields: Bundle SID, Legal Entity Name, and Website URL.',
+          message: 'Please fill in all required fields: Legal Entity Name and Website URL.',
           title: 'Missing Information',
           type: 'error'
         })
@@ -262,10 +263,10 @@ export default function PhoneNumbersPage() {
     if (!verificationModal.phoneNumberId) return
 
     // Validate Step 1 required fields
-    if (!verificationForm.bundleSid || !verificationForm.legalEntityName || !verificationForm.websiteUrl) {
+    if (!verificationForm.legalEntityName || !verificationForm.websiteUrl) {
       setAlertModal({
         isOpen: true,
-        message: 'Please fill in all required fields from Step 1: Bundle SID, Legal Entity Name, and Website URL.',
+        message: 'Please fill in all required fields from Step 1: Legal Entity Name and Website URL.',
         title: 'Missing Information',
         type: 'error'
       })
@@ -321,7 +322,6 @@ export default function PhoneNumbersPage() {
 
       // Reset form and step
       setVerificationForm({
-        bundleSid: '',
         legalEntityName: '',
         websiteUrl: '',
         businessAddress: '',
@@ -345,7 +345,12 @@ export default function PhoneNumbersPage() {
       })
       setVerificationStep(1)
       setVerificationModal({ isOpen: false, phoneNumberId: null })
-      await loadPhoneNumbers()
+      setRejectionReasons(null)
+      
+      // Wait a moment then reload phone numbers to get updated status
+      setTimeout(async () => {
+        await loadPhoneNumbers()
+      }, 500)
 
       setAlertModal({
         isOpen: true,
@@ -366,33 +371,86 @@ export default function PhoneNumbersPage() {
     }
   }
 
-  const handleOpenVerification = (phoneNumberId: string) => {
+  const handleOpenVerification = async (phoneNumberId: string) => {
     setVerificationModal({ isOpen: true, phoneNumberId })
     setVerificationStep(1)
-    // Reset form when opening
-    setVerificationForm({
-      bundleSid: '',
-      legalEntityName: '',
-      websiteUrl: '',
-      businessAddress: '',
-      businessCity: '',
-      businessState: '',
-      businessPostalCode: '',
-      businessCountry: 'US',
-      contactName: '',
-      contactEmail: '',
-      contactPhone: '',
-      estimatedMonthlyVolume: '',
-      optInType: '',
-      optInPolicyImageUrl: '',
-      useCaseCategory: '',
-      useCaseDescription: '',
-      messageContentExamples: '',
-      businessRegistrationNumber: '',
-      businessRegistrationType: '',
-      businessRegistrationCountry: '',
-      entityType: ''
-    })
+    setSubmittingVerification(true) // Use this as loading state
+    
+    // Try to fetch existing verification data to pre-populate form
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/organizations/phone-numbers/${phoneNumberId}/verify`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('[VERIFICATION] GET response data:', data)
+        const verification = data.verification
+        console.log('[VERIFICATION] Extracted verification:', verification)
+        
+        // If we have existing verification data, pre-populate the form
+        if (verification && verification.sid) {
+          console.log('[VERIFICATION] Pre-populating form with existing data:', verification)
+          
+          // Store rejection reasons if any
+          if (verification.rejectionReasons && verification.rejectionReasons.length > 0) {
+            setRejectionReasons(verification.rejectionReasons)
+          }
+          
+          // Map Twilio's MessageVolume to our form values
+          const volumeMap: Record<string, string> = {
+            '1,000': '0-1000',
+            '10,000': '1001-10000',
+            '100,000': '50001-100000',
+            '250,000': '100001-500000',
+            '1,000,000': '500001+',
+          }
+          
+          // Map Twilio's opt_in_type to lowercase for our form
+          const optInTypeMap: Record<string, string> = {
+            'WEB_FORM': 'web_form',
+            'PAPER_FORM': 'paper_form',
+            'VIA_TEXT': 'via_text',
+            'VERBAL': 'verbal',
+            'MOBILE_QR_CODE': 'mobile_qr_code',
+            'IMPORT': 'import',
+          }
+          
+          setVerificationForm({
+            legalEntityName: verification.businessName || '',
+            websiteUrl: verification.businessWebsite || '',
+            businessAddress: verification.businessStreetAddress || '',
+            businessCity: verification.businessCity || '',
+            businessState: verification.businessStateProvinceRegion || '',
+            businessPostalCode: verification.businessPostalCode || '',
+            businessCountry: verification.businessCountry || 'US',
+            contactName: `${verification.businessContactFirstName || ''} ${verification.businessContactLastName || ''}`.trim(),
+            contactEmail: verification.businessContactEmail || '',
+            contactPhone: verification.businessContactPhone || '',
+            estimatedMonthlyVolume: volumeMap[verification.messageVolume] || '',
+            optInType: optInTypeMap[verification.optInType] || verification.optInType?.toLowerCase() || '',
+            optInPolicyImageUrl: verification.optInImageUrls?.[0] || '',
+            useCaseCategory: verification.useCaseCategories?.[0] || '',
+            useCaseDescription: verification.useCaseSummary || '',
+            messageContentExamples: verification.productionMessageSample || '',
+            businessRegistrationNumber: verification.businessRegistrationNumber || '',
+            businessRegistrationType: verification.businessRegistrationAuthority || '',
+            businessRegistrationCountry: verification.businessRegistrationCountry || '',
+            entityType: verification.businessType || '',
+          })
+          
+          console.log('[VERIFICATION] Form pre-populated successfully')
+        }
+      }
+    } catch (error) {
+      console.error('[VERIFICATION] Failed to fetch existing verification:', error)
+    } finally {
+      setSubmittingVerification(false) // Clear loading state
+    }
   }
 
   const handleDeleteNumber = async (phoneNumberId: string, phoneNumber: string) => {
@@ -599,10 +657,10 @@ export default function PhoneNumbersPage() {
                         </>
                       )}
                       <button
-                        onClick={loadPhoneNumbers}
+                        onClick={() => loadPhoneNumbers()}
                         disabled={loading}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                        title="Refresh status"
+                        className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors ${loading ? 'animate-spin' : ''}`}
+                        title="Refresh verification status from Twilio"
                       >
                         <MdRefresh className="w-5 h-5" />
                       </button>
@@ -677,7 +735,17 @@ export default function PhoneNumbersPage() {
       {/* Verification Modal */}
       {verificationModal.isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto relative">
+            {/* Loading overlay */}
+            {submittingVerification && verificationStep === 1 && (
+              <div className="absolute inset-0 bg-white bg-opacity-90 z-10 flex items-center justify-center rounded-lg">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading verification data...</p>
+                </div>
+              </div>
+            )}
+            
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-semibold text-gray-900">Toll-Free Verification</h2>
@@ -687,12 +755,36 @@ export default function PhoneNumbersPage() {
                 onClick={() => {
                   setVerificationModal({ isOpen: false, phoneNumberId: null })
                   setVerificationStep(1)
+                  setRejectionReasons(null)
                 }}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
               >
                 <MdClose className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Rejection Reasons Banner */}
+            {rejectionReasons && rejectionReasons.length > 0 && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start">
+                  <MdError className="w-5 h-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-red-800 mb-2">Previous Submission Rejected</h3>
+                    <div className="space-y-2">
+                      {rejectionReasons.map((reason, index) => (
+                        <div key={index} className="text-sm text-red-700">
+                          <span className="font-medium">• {reason.reason}</span>
+                          {reason.code && <span className="text-red-600 ml-2">(Code: {reason.code})</span>}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-red-600 mt-3">
+                      Please review and correct the highlighted issues before resubmitting.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Step Indicator */}
             <div className="mb-6">
@@ -729,31 +821,6 @@ export default function PhoneNumbersPage() {
 
             {verificationStep === 1 && (
             <div className="space-y-4">
-              {/* Business Profile / Bundle SID */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Business Profile (Bundle SID) *
-                </label>
-                <input
-                  type="text"
-                  value={verificationForm.bundleSid}
-                  onChange={(e) => setVerificationForm({ ...verificationForm, bundleSid: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="BUff20f8e61db20628445a2368f1bf5320"
-                />
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-gray-500">
-                    A Bundle SID is a compliance bundle identifier (starts with "BU"). This contains your verified business information.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    <strong>How to find it:</strong> Go to your messaging provider's console → Trust Hub → Bundles. Copy the Bundle SID (starts with "BU") or search by the Friendly Name.
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    <strong>Don't have one?</strong> You'll need to create a Trust Hub Bundle in your messaging provider's console first with your business information.
-                  </p>
-                </div>
-              </div>
-
               {/* Legal Entity Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -933,12 +1000,12 @@ export default function PhoneNumbersPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Select opt-in method</option>
+                  <option value="verbal">Verbal Consent</option>
                   <option value="web_form">Web Form</option>
                   <option value="paper_form">Paper Form</option>
-                  <option value="text_message">Text Message (SMS)</option>
-                  <option value="verbal">Verbal Consent</option>
-                  <option value="mobile_app">Mobile App</option>
-                  <option value="other">Other</option>
+                  <option value="via_text">Via Text Message (SMS)</option>
+                  <option value="mobile_qr_code">Mobile QR Code</option>
+                  <option value="import">Import</option>
                 </select>
               </div>
 
