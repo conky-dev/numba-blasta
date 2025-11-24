@@ -179,13 +179,42 @@ export async function POST(
 
     const phoneNumber = phoneNumberResult.rows[0];
     const phoneSid = phoneNumber.phone_sid;
-    const existingVerificationSid = phoneNumber.verification_sid; // Check if we have an existing verification
+    let existingVerificationSid = phoneNumber.verification_sid; // Check if we have an existing verification in DB
 
     if (!phoneSid) {
       return NextResponse.json(
         { error: 'Phone number SID not found. Please reprovision the number.' },
         { status: 400 }
       );
+    }
+    
+    // Initialize Twilio client early to check for existing verifications
+    const client = twilio(accountSid, authToken);
+    
+    // If we don't have a verification_sid in DB, check Twilio directly
+    if (!existingVerificationSid) {
+      console.log('[TOLL-FREE VERIFICATION] No verification_sid in DB, checking Twilio for existing verifications...');
+      try {
+        const existingVerifications = await client.messaging.v1.tollfreeVerifications.list({
+          tollfreePhoneNumberSid: phoneSid,
+          limit: 1
+        });
+        
+        if (existingVerifications.length > 0) {
+          existingVerificationSid = existingVerifications[0].sid;
+          console.log('[TOLL-FREE VERIFICATION] Found existing verification on Twilio:', existingVerificationSid);
+          
+          // Update DB with the verification SID
+          await query(
+            `UPDATE phone_numbers SET verification_sid = $1 WHERE id = $2`,
+            [existingVerificationSid, phoneNumberId]
+          );
+        } else {
+          console.log('[TOLL-FREE VERIFICATION] No existing verifications found on Twilio');
+        }
+      } catch (listError: any) {
+        console.error('[TOLL-FREE VERIFICATION] Error listing existing verifications:', listError.message);
+      }
     }
 
     // Validate that phoneSid is actually a phone number SID (starts with "PN"), not a Bundle SID (starts with "BU")
@@ -260,19 +289,17 @@ export async function POST(
     }
 
     // Map our volume range strings to Twilio's MessageVolume enum values
-    // Twilio expects: '10', '100', '1,000', '10,000', '100,000', '250,000', '500,000', '750,000', '1,000,000', '5,000,000', '10,000,000+'
+    // From docs: '10', '100', '1,000', '10,000', '100,000', '250,000', '500,000', '750,000', '1,000,000', '5,000,000', '10,000,000+'
+    // MUST use exact enum values WITH COMMAS for numbers >= 1,000
     const volumeMap: Record<string, string> = {
       '0-1000': '1,000',
       '1001-10000': '10,000',
-      '10001-50000': '10,000', // Map to closest
+      '10001-50000': '10,000',
       '50001-100000': '100,000',
-      '100001-500000': '250,000', // Map to closest
+      '100001-500000': '250,000',
       '500001+': '1,000,000',
     };
     const twilioMessageVolume = volumeMap[estimatedMonthlyVolume] || '10,000';
-
-    // Initialize Twilio client
-    const client = twilio(accountSid, authToken);
 
     console.log('[TOLL-FREE VERIFICATION] Submitting verification for:', {
       phoneNumberId,
@@ -382,29 +409,29 @@ export async function POST(
           console.log('[TOLL-FREE VERIFICATION] Existing verification editable:', isEditable);
           
           if (isEditable) {
-            // Use SDK update method for editing
+            // Use SDK update method for editing - must use camelCase with uppercase enums
             verificationPayload = {
               messageVolume: twilioMessageVolume,
-              optInType: optInType,
-              optInImageUrls: optInImageUrls,
-              useCaseCategories: [finalUseCaseCategory],
+              optInType: optInType.toUpperCase(), // MUST be uppercase enum
+              optInImageUrls: optInImageUrls.length > 0 ? optInImageUrls : [websiteUrl + '/opt-in'],
+              useCaseCategories: [finalUseCaseCategory], // Already uppercase
               useCaseSummary: useCaseDescription,
               productionMessageSample: messageContentExamples || useCaseDescription,
-              editReason: 'Updated verification information based on previous feedback',
+              editReason: 'Updated verification information based on previous rejection feedback',
             };
             
-            console.log('[TOLL-FREE VERIFICATION] Update payload:', JSON.stringify(verificationPayload, null, 2));
+            console.log('[TOLL-FREE VERIFICATION] Updating existing verification with payload:', JSON.stringify(verificationPayload, null, 2));
             
             verification = await client.messaging.v1
               .tollfreeVerifications(existingVerificationSid)
               .update(verificationPayload);
-            console.log('[TOLL-FREE VERIFICATION] Update response:', JSON.stringify(verification, null, 2));
+            console.log('[TOLL-FREE VERIFICATION] ✅ Update successful! Response:', JSON.stringify(verification, null, 2));
           } else {
-            console.log('[TOLL-FREE VERIFICATION] Verification not editable, will create new one');
-            // Clear the existing verification SID and proceed to create new
-            await query(
-              `UPDATE phone_numbers SET verification_sid = NULL WHERE id = $1`,
-              [phoneNumberId]
+            console.log('[TOLL-FREE VERIFICATION] ⚠️ Verification not editable (edit_allowed=false)');
+            console.log('[TOLL-FREE VERIFICATION] Cannot update or create new - verification exists but is locked');
+            return NextResponse.json(
+              { error: 'This verification cannot be edited. The verification already exists and the edit window has expired. Please contact Twilio support.' },
+              { status: 400 }
             );
           }
         } catch (fetchError: any) {
@@ -418,70 +445,35 @@ export async function POST(
       }
       
       // Create new verification if we didn't update
-      if (!verification && bundleSid) {
-        // First attempt: with customerProfileSid, without address/contact fields and BRN fields
-        // (those come from the Trust Hub Bundle)
-        // Use REST API directly to avoid SDK parsing issues
-        verificationPayload = {
-          BusinessName: legalEntityName,
-          BusinessWebsite: websiteUrl,
-          TollfreePhoneNumberSid: actualPhoneSid,
-          NotificationEmail: notificationEmail,
-          MessageVolume: twilioMessageVolume,
-          OptInType: optInType,
-          OptInImageUrls: optInImageUrls,
-          UseCaseCategories: [finalUseCaseCategory],
-          UseCaseSummary: useCaseDescription,
-          ProductionMessageSample: messageContentExamples || useCaseDescription,
-          CustomerProfileSid: bundleSid,
-        };
+      if (!verification) {
+        // Don't use customerProfileSid - send all fields directly instead
+        // This avoids PCP (Primary Customer Profile) issues
+        console.log('[TOLL-FREE VERIFICATION] Creating verification WITHOUT customerProfileSid');
+        console.log('[TOLL-FREE VERIFICATION] Will include all business address and contact fields');
         
-        console.log('[TOLL-FREE VERIFICATION] Attempting with customerProfileSid:', bundleSid);
-        console.log('[TOLL-FREE VERIFICATION] Full payload being sent:', JSON.stringify(verificationPayload, null, 2));
-        
-        try {
-          // Use direct fetch with Basic Auth instead of client.request()
-          const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
-          const response = await fetch(`https://messaging.twilio.com/v1/Tollfree/Verifications`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Basic ${auth}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams(verificationPayload).toString(),
-          });
-          
-          const responseData = await response.json();
-          console.log('[TOLL-FREE VERIFICATION] Raw API response:', JSON.stringify(responseData, null, 2));
-          
-          if (!response.ok) {
-            throw new Error(responseData.message || 'Failed to create verification');
-          }
-          
-          verification = responseData;
-        } catch (error: any) {
-          // If error is about PCP, retry without customerProfileSid but with address/contact and BRN fields
-          if (error.message?.includes('Primary Profiles') || error.message?.includes('PCP') || error.message?.includes('ISV Starters or Secondary')) {
-            console.log('[TOLL-FREE VERIFICATION] PCP detected, retrying without customerProfileSid but with address/contact and BRN fields');
-            verificationPayload = {
-              ...basePayload,
-              ...addressContactFields,
-              ...brnFields,
-            };
-            verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
-          } else {
-            throw error;
-          }
-        }
-      } else {
-        // No bundleSid provided, use address/contact and BRN fields
         verificationPayload = {
           ...basePayload,
           ...addressContactFields,
           ...brnFields,
         };
-        console.log('[TOLL-FREE VERIFICATION] No bundleSid provided, using address/contact and BRN fields');
-        verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
+        
+        console.log('[TOLL-FREE VERIFICATION] Full SDK payload:', JSON.stringify(verificationPayload, null, 2));
+        
+        try {
+          verification = await client.messaging.v1.tollfreeVerifications.create(verificationPayload);
+          console.log('[TOLL-FREE VERIFICATION] Success! Verification created:', verification.sid);
+        } catch (error: any) {
+          console.error('[TOLL-FREE VERIFICATION] Twilio API error:', {
+            message: error.message,
+            status: error.status,
+            code: error.code,
+            moreInfo: error.moreInfo,
+            details: error.details,
+            stack: error.stack,
+            fullError: JSON.stringify(error, null, 2),
+          });
+          throw error;
+        }
       }
       
       console.log('[TOLL-FREE VERIFICATION] Payload sent:', JSON.stringify(verificationPayload, null, 2));

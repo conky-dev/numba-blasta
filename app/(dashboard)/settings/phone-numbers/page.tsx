@@ -47,6 +47,7 @@ export default function PhoneNumbersPage() {
   const [verificationStep, setVerificationStep] = useState(1)
   const [loadingBundles, setLoadingBundles] = useState(false)
   const [bundles, setBundles] = useState<Array<{ sid: string; friendlyName: string; status: string }>>([])
+  const [rejectionReasons, setRejectionReasons] = useState<Array<{ code: number; reason: string }> | null>(null)
   const [verificationForm, setVerificationForm] = useState({
     // Step 1: Business Information
     // bundleSid is now provided by environment variable on the backend
@@ -344,6 +345,7 @@ export default function PhoneNumbersPage() {
       })
       setVerificationStep(1)
       setVerificationModal({ isOpen: false, phoneNumberId: null })
+      setRejectionReasons(null)
       
       // Wait a moment then reload phone numbers to get updated status
       setTimeout(async () => {
@@ -393,6 +395,11 @@ export default function PhoneNumbersPage() {
         // If we have existing verification data, pre-populate the form
         if (verification && verification.sid) {
           console.log('[VERIFICATION] Pre-populating form with existing data:', verification)
+          
+          // Store rejection reasons if any
+          if (verification.rejectionReasons && verification.rejectionReasons.length > 0) {
+            setRejectionReasons(verification.rejectionReasons)
+          }
           
           // Map Twilio's MessageVolume to our form values
           const volumeMap: Record<string, string> = {
@@ -748,12 +755,36 @@ export default function PhoneNumbersPage() {
                 onClick={() => {
                   setVerificationModal({ isOpen: false, phoneNumberId: null })
                   setVerificationStep(1)
+                  setRejectionReasons(null)
                 }}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
               >
                 <MdClose className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Rejection Reasons Banner */}
+            {rejectionReasons && rejectionReasons.length > 0 && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start">
+                  <MdError className="w-5 h-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-red-800 mb-2">Previous Submission Rejected</h3>
+                    <div className="space-y-2">
+                      {rejectionReasons.map((reason, index) => (
+                        <div key={index} className="text-sm text-red-700">
+                          <span className="font-medium">• {reason.reason}</span>
+                          {reason.code && <span className="text-red-600 ml-2">(Code: {reason.code})</span>}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-red-600 mt-3">
+                      Please review and correct the highlighted issues before resubmitting.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Step Indicator */}
             <div className="mb-6">
