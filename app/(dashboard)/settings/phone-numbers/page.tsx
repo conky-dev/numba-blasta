@@ -344,7 +344,11 @@ export default function PhoneNumbersPage() {
       })
       setVerificationStep(1)
       setVerificationModal({ isOpen: false, phoneNumberId: null })
-      await loadPhoneNumbers()
+      
+      // Wait a moment then reload phone numbers to get updated status
+      setTimeout(async () => {
+        await loadPhoneNumbers()
+      }, 500)
 
       setAlertModal({
         isOpen: true,
@@ -365,32 +369,81 @@ export default function PhoneNumbersPage() {
     }
   }
 
-  const handleOpenVerification = (phoneNumberId: string) => {
+  const handleOpenVerification = async (phoneNumberId: string) => {
     setVerificationModal({ isOpen: true, phoneNumberId })
     setVerificationStep(1)
-    // Reset form when opening
-    setVerificationForm({
-      legalEntityName: '',
-      websiteUrl: '',
-      businessAddress: '',
-      businessCity: '',
-      businessState: '',
-      businessPostalCode: '',
-      businessCountry: 'US',
-      contactName: '',
-      contactEmail: '',
-      contactPhone: '',
-      estimatedMonthlyVolume: '',
-      optInType: '',
-      optInPolicyImageUrl: '',
-      useCaseCategory: '',
-      useCaseDescription: '',
-      messageContentExamples: '',
-      businessRegistrationNumber: '',
-      businessRegistrationType: '',
-      businessRegistrationCountry: '',
-      entityType: ''
-    })
+    setSubmittingVerification(true) // Use this as loading state
+    
+    // Try to fetch existing verification data to pre-populate form
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/organizations/phone-numbers/${phoneNumberId}/verify`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('[VERIFICATION] GET response data:', data)
+        const verification = data.verification
+        console.log('[VERIFICATION] Extracted verification:', verification)
+        
+        // If we have existing verification data, pre-populate the form
+        if (verification && verification.sid) {
+          console.log('[VERIFICATION] Pre-populating form with existing data:', verification)
+          
+          // Map Twilio's MessageVolume to our form values
+          const volumeMap: Record<string, string> = {
+            '1,000': '0-1000',
+            '10,000': '1001-10000',
+            '100,000': '50001-100000',
+            '250,000': '100001-500000',
+            '1,000,000': '500001+',
+          }
+          
+          // Map Twilio's opt_in_type to lowercase for our form
+          const optInTypeMap: Record<string, string> = {
+            'WEB_FORM': 'web_form',
+            'PAPER_FORM': 'paper_form',
+            'VIA_TEXT': 'via_text',
+            'VERBAL': 'verbal',
+            'MOBILE_QR_CODE': 'mobile_qr_code',
+            'IMPORT': 'import',
+          }
+          
+          setVerificationForm({
+            legalEntityName: verification.businessName || '',
+            websiteUrl: verification.businessWebsite || '',
+            businessAddress: verification.businessStreetAddress || '',
+            businessCity: verification.businessCity || '',
+            businessState: verification.businessStateProvinceRegion || '',
+            businessPostalCode: verification.businessPostalCode || '',
+            businessCountry: verification.businessCountry || 'US',
+            contactName: `${verification.businessContactFirstName || ''} ${verification.businessContactLastName || ''}`.trim(),
+            contactEmail: verification.businessContactEmail || '',
+            contactPhone: verification.businessContactPhone || '',
+            estimatedMonthlyVolume: volumeMap[verification.messageVolume] || '',
+            optInType: optInTypeMap[verification.optInType] || verification.optInType?.toLowerCase() || '',
+            optInPolicyImageUrl: verification.optInImageUrls?.[0] || '',
+            useCaseCategory: verification.useCaseCategories?.[0] || '',
+            useCaseDescription: verification.useCaseSummary || '',
+            messageContentExamples: verification.productionMessageSample || '',
+            businessRegistrationNumber: verification.businessRegistrationNumber || '',
+            businessRegistrationType: verification.businessRegistrationAuthority || '',
+            businessRegistrationCountry: verification.businessRegistrationCountry || '',
+            entityType: verification.businessType || '',
+          })
+          
+          console.log('[VERIFICATION] Form pre-populated successfully')
+        }
+      }
+    } catch (error) {
+      console.error('[VERIFICATION] Failed to fetch existing verification:', error)
+    } finally {
+      setSubmittingVerification(false) // Clear loading state
+    }
   }
 
   const handleDeleteNumber = async (phoneNumberId: string, phoneNumber: string) => {
@@ -597,10 +650,10 @@ export default function PhoneNumbersPage() {
                         </>
                       )}
                       <button
-                        onClick={loadPhoneNumbers}
+                        onClick={() => loadPhoneNumbers()}
                         disabled={loading}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                        title="Refresh status"
+                        className={`p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors ${loading ? 'animate-spin' : ''}`}
+                        title="Refresh verification status from Twilio"
                       >
                         <MdRefresh className="w-5 h-5" />
                       </button>
@@ -675,7 +728,17 @@ export default function PhoneNumbersPage() {
       {/* Verification Modal */}
       {verificationModal.isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto relative">
+            {/* Loading overlay */}
+            {submittingVerification && verificationStep === 1 && (
+              <div className="absolute inset-0 bg-white bg-opacity-90 z-10 flex items-center justify-center rounded-lg">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading verification data...</p>
+                </div>
+              </div>
+            )}
+            
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-semibold text-gray-900">Toll-Free Verification</h2>

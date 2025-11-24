@@ -164,7 +164,7 @@ export async function POST(
 
     // Get the phone number record
     const phoneNumberResult = await query(
-      `SELECT id, phone_number, phone_sid, org_id, status
+      `SELECT id, phone_number, phone_sid, org_id, status, verification_sid
        FROM phone_numbers
        WHERE id = $1 AND org_id = $2`,
       [phoneNumberId, orgId]
@@ -179,6 +179,7 @@ export async function POST(
 
     const phoneNumber = phoneNumberResult.rows[0];
     const phoneSid = phoneNumber.phone_sid;
+    const existingVerificationSid = phoneNumber.verification_sid; // Check if we have an existing verification
 
     if (!phoneSid) {
       return NextResponse.json(
@@ -367,10 +368,60 @@ export async function POST(
       // If it fails with PCP error, retry without customerProfileSid but with address/contact fields
       let verificationPayload: any;
       
-      if (bundleSid) {
+      // Check if we're editing an existing verification or creating a new one
+      if (existingVerificationSid) {
+        console.log('[TOLL-FREE VERIFICATION] Found existing verification SID:', existingVerificationSid);
+        
+        // Check if this verification is editable
+        try {
+          const existingVerification = await client.messaging.v1
+            .tollfreeVerifications(existingVerificationSid)
+            .fetch();
+          
+          const isEditable = existingVerification.editAllowed || false;
+          console.log('[TOLL-FREE VERIFICATION] Existing verification editable:', isEditable);
+          
+          if (isEditable) {
+            // Use SDK update method for editing
+            verificationPayload = {
+              messageVolume: twilioMessageVolume,
+              optInType: optInType,
+              optInImageUrls: optInImageUrls,
+              useCaseCategories: [finalUseCaseCategory],
+              useCaseSummary: useCaseDescription,
+              productionMessageSample: messageContentExamples || useCaseDescription,
+              editReason: 'Updated verification information based on previous feedback',
+            };
+            
+            console.log('[TOLL-FREE VERIFICATION] Update payload:', JSON.stringify(verificationPayload, null, 2));
+            
+            verification = await client.messaging.v1
+              .tollfreeVerifications(existingVerificationSid)
+              .update(verificationPayload);
+            console.log('[TOLL-FREE VERIFICATION] Update response:', JSON.stringify(verification, null, 2));
+          } else {
+            console.log('[TOLL-FREE VERIFICATION] Verification not editable, will create new one');
+            // Clear the existing verification SID and proceed to create new
+            await query(
+              `UPDATE phone_numbers SET verification_sid = NULL WHERE id = $1`,
+              [phoneNumberId]
+            );
+          }
+        } catch (fetchError: any) {
+          console.error('[TOLL-FREE VERIFICATION] Failed to fetch existing verification:', fetchError.message);
+          // If we can't fetch it, it might not exist anymore - proceed to create new
+          await query(
+            `UPDATE phone_numbers SET verification_sid = NULL WHERE id = $1`,
+            [phoneNumberId]
+          );
+        }
+      }
+      
+      // Create new verification if we didn't update
+      if (!verification && bundleSid) {
         // First attempt: with customerProfileSid, without address/contact fields and BRN fields
         // (those come from the Trust Hub Bundle)
-        // Use REST API directly to avoid SDK field name transformations
+        // Use REST API directly to avoid SDK parsing issues
         verificationPayload = {
           BusinessName: legalEntityName,
           BusinessWebsite: websiteUrl,
@@ -389,13 +440,25 @@ export async function POST(
         console.log('[TOLL-FREE VERIFICATION] Full payload being sent:', JSON.stringify(verificationPayload, null, 2));
         
         try {
-          // Use direct REST API call with PascalCase field names
-          const response = await client.request({
-            method: 'post',
-            uri: `https://messaging.twilio.com/v1/Messaging/TollfreeVerifications`,
-            data: verificationPayload,
+          // Use direct fetch with Basic Auth instead of client.request()
+          const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+          const response = await fetch(`https://messaging.twilio.com/v1/Tollfree/Verifications`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams(verificationPayload).toString(),
           });
-          verification = response;
+          
+          const responseData = await response.json();
+          console.log('[TOLL-FREE VERIFICATION] Raw API response:', JSON.stringify(responseData, null, 2));
+          
+          if (!response.ok) {
+            throw new Error(responseData.message || 'Failed to create verification');
+          }
+          
+          verification = responseData;
         } catch (error: any) {
           // If error is about PCP, retry without customerProfileSid but with address/contact and BRN fields
           if (error.message?.includes('Primary Profiles') || error.message?.includes('PCP') || error.message?.includes('ISV Starters or Secondary')) {
@@ -571,29 +634,66 @@ export async function GET(
 
     try {
       // Fetch verification status from Twilio using REST API
+      console.log('[TOLL-FREE VERIFICATION GET] Fetching verifications for phone SID:', phoneSid);
       const verificationsResponse = await client.request({
         method: 'get',
-        uri: `/v1/Messaging/TollFreeVerifications`,
+        uri: `https://messaging.twilio.com/v1/Tollfree/Verifications`,
         params: {
-          PhoneNumberSid: phoneSid,
+          TollfreePhoneNumberSid: phoneSid,
           PageSize: 1,
         },
       });
 
-      const verifications = verificationsResponse.verifications || verificationsResponse || [];
+      console.log('[TOLL-FREE VERIFICATION GET] Raw response:', JSON.stringify(verificationsResponse, null, 2));
+      
+      // Handle the nested response structure from client.request()
+      const responseBody = verificationsResponse.body || verificationsResponse;
+      const verifications = responseBody.verifications || [];
+      console.log('[TOLL-FREE VERIFICATION GET] Found verifications count:', verifications.length);
 
       if (verifications.length > 0) {
         const verification = verifications[0];
-        const verificationStatus = verification.Status || verification.status;
+        console.log('[TOLL-FREE VERIFICATION GET] First verification:', JSON.stringify(verification, null, 2));
+        const verificationStatus = verification.status; // Using snake_case as that's what Twilio returns
         return NextResponse.json(
           {
             verification: {
-              sid: verification.Sid || verification.sid,
+              sid: verification.sid,
               status: verificationStatus,
               phoneNumber: phoneNumber.phone_number,
-              rejectionReason: verification.RejectionReason || verification.rejectionReason,
+              rejectionReason: verification.rejection_reason,
+              rejectionReasons: verification.rejection_reasons || null,
+              editAllowed: verification.edit_allowed || false,
+              editExpiration: verification.edit_expiration || null,
+              // Include all the form fields so we can pre-populate
+              businessName: verification.business_name,
+              businessWebsite: verification.business_website,
+              messageVolume: verification.message_volume,
+              optInType: verification.opt_in_type,
+              optInImageUrls: verification.opt_in_image_urls || [],
+              useCaseCategories: verification.use_case_categories || [],
+              useCaseSummary: verification.use_case_summary,
+              productionMessageSample: verification.production_message_sample,
+              // Business address fields
+              businessStreetAddress: verification.business_street_address,
+              businessCity: verification.business_city,
+              businessStateProvinceRegion: verification.business_state_province_region,
+              businessPostalCode: verification.business_postal_code,
+              businessCountry: verification.business_country,
+              // Contact fields
+              businessContactFirstName: verification.business_contact_first_name,
+              businessContactLastName: verification.business_contact_last_name,
+              businessContactEmail: verification.business_contact_email,
+              businessContactPhone: verification.business_contact_phone,
+              // BRN fields
+              businessRegistrationNumber: verification.business_registration_number,
+              businessRegistrationAuthority: verification.business_registration_authority,
+              businessRegistrationCountry: verification.business_registration_country,
+              businessType: verification.business_type,
               // Map Twilio status to our status
               ourStatus: verificationStatus === 'APPROVED' ? 'verified' :
+                        verificationStatus === 'PENDING_REVIEW' ? 'awaiting_verification' :
+                        verificationStatus === 'TWILIO_REJECTED' ? 'failed' :
                         verificationStatus === 'PENDING' ? 'awaiting_verification' :
                         verificationStatus === 'REJECTED' ? 'failed' : 'awaiting_verification',
             },
