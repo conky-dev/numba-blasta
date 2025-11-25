@@ -6,6 +6,6 @@ nixpacksConfigPath = ".nixpacks.toml"
 watchPatterns = ["workers/**"]
 
 [deploy]
-startCommand = "echo 'Worker disabled' && exit 0"
+startCommand = "./node_modules/.bin/tsx workers/sms-worker.ts"
 restartPolicyType = "NEVER"
 
