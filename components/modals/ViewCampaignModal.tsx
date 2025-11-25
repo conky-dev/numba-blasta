@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MdClose, MdEdit, MdSend, MdSchedule } from 'react-icons/md'
+import { MdClose, MdEdit, MdSend } from 'react-icons/md'
 import AlertModal from './AlertModal'
 
 interface Campaign {
@@ -270,24 +270,13 @@ export default function ViewCampaignModal({
                   </button>
                 )}
                 
-                {/* Send Now - only for draft/scheduled */}
-                {['draft', 'scheduled'].includes(campaign.status) && onSend && (
-                  <button
-                    onClick={handleSend}
-                    className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                  >
-                    <MdSend className="w-5 h-5" />
-                    <span>Send Now</span>
-                  </button>
-                )}
-                
                 {/* Schedule - only for draft */}
                 {campaign.status === 'draft' && onSchedule && (
                   <button
                     onClick={handleSchedule}
                     className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors"
                   >
-                    <MdSchedule className="w-5 h-5" />
+                    <MdSend className="w-5 h-5" />
                     <span>Schedule</span>
                   </button>
                 )}
