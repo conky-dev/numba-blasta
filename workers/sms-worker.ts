@@ -463,12 +463,12 @@ try {
         twilioSid = `SIM${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
       }
       
-      // Step 5: Deduct balance and save message
-      await query('BEGIN');
+      // Step 5: Deduct balance IMMEDIATELY after successful Twilio send
+      // This must happen BEFORE saving to DB, in its own transaction
+      // So even if DB save fails, the balance is still deducted (message was sent!)
+      console.log(`[WORKER] Deducting $${cost.toFixed(4)} credits for org ${orgId} (${segments} segment(s), $${costPerSegment.toFixed(4)}/segment)`);
       
       try {
-        // Deduct balance
-        console.log(`[WORKER] Deducting $${cost.toFixed(4)} credits for org ${orgId} (${segments} segment(s), $${costPerSegment.toFixed(4)}/segment)`);
         await query(
           `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7)`,
           [
@@ -482,7 +482,16 @@ try {
           ]
         );
         console.log(`[WORKER] Credits deducted successfully`);
-        
+      } catch (deductError: any) {
+        console.error(`[WORKER] ❌ Failed to deduct credits:`, deductError.message);
+        // Don't fail the job - message was already sent!
+        // This is logged for manual reconciliation if needed
+      }
+      
+      // Step 6: Save message record to DB (in separate transaction)
+      await query('BEGIN');
+      
+      try {
         // Save message record
         console.log(`[WORKER] Saving message to database:`, {
           orgId,
