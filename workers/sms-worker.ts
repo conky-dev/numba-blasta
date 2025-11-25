@@ -592,7 +592,7 @@ try {
   },
   {
     connection,
-    concurrency: 5, // Process 5 messages at a time
+    concurrency: 50, // Process 50 messages at a time
   }
 );
 
@@ -696,35 +696,38 @@ try {
         const smsQueue = new Queue('sms', { connection });
         
         let queuedCount = 0;
-        const batchSize = 100; // Queue in batches
+        const batchSize = 5000; // Queue in large batches
         
         for (let i = 0; i < contacts.length; i += batchSize) {
           const batch = contacts.slice(i, i + batchSize);
           
-          for (const contact of batch) {
+          // Prepare bulk jobs
+          const bulkJobs = batch.map((contact) => {
             // Render message with contact data (simple mustache-like replacement)
             let renderedMessage = campaign.message;
             renderedMessage = renderedMessage.replace(/\{\{firstName\}\}/g, contact.first_name || '');
             renderedMessage = renderedMessage.replace(/\{\{lastName\}\}/g, contact.last_name || '');
             renderedMessage = renderedMessage.replace(/\{\{email\}\}/g, contact.email || '');
             
-            await smsQueue.add('send-sms', {
-              to: contact.phone,
-              message: renderedMessage,
-              orgId,
-              userId,
-              contactId: contact.id,
-              campaignId,
-              templateId: campaign.template_id,
-            });
-            
-            queuedCount++;
-          }
+            return {
+              name: 'send-sms',
+              data: {
+                to: contact.phone,
+                message: renderedMessage,
+                orgId,
+                userId,
+                contactId: contact.id,
+                campaignId,
+                templateId: campaign.template_id,
+              }
+            };
+          });
+          
+          // Add all jobs in bulk
+          await smsQueue.addBulk(bulkJobs);
+          queuedCount += batch.length;
           
           console.log(`[CAMPAIGN] Queued ${Math.min((i + batchSize), contacts.length)}/${contacts.length} messages`);
-          
-          // Small delay between batches to avoid overwhelming the queue
-          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         console.log(`[CAMPAIGN] ✅ Campaign ${campaignId} queued ${queuedCount} messages`);
