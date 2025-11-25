@@ -502,17 +502,6 @@ export default function CampaignsPage() {
                           </button>
                         )}
                         
-                        {/* Send Now - only for draft/scheduled */}
-                        {['draft', 'scheduled'].includes(campaign.status) && (
-                          <button
-                            onClick={() => handleSend(campaign.id, campaign.name)}
-                            className="text-green-500 hover:text-green-700"
-                            title="Send Now"
-                          >
-                            <MdSend className="w-5 h-5" />
-                          </button>
-                        )}
-                        
                         {/* Schedule - only for draft */}
                         {campaign.status === 'draft' && (
                           <button
@@ -520,7 +509,7 @@ export default function CampaignsPage() {
                             className="text-purple-500 hover:text-purple-700"
                             title="Schedule"
                           >
-                            <MdSchedule className="w-5 h-5" />
+                            <MdSend className="w-5 h-5" />
                           </button>
                         )}
                         

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import AlertModal from '@/components/modals/AlertModal'
+import MessageInputWithStats from '@/components/MessageInputWithStats'
 import { api } from '@/lib/api-client'
 
 interface Campaign {
@@ -106,6 +107,16 @@ export default function CreateCampaignModal({
       .filter(c => formData.targetCategories.includes(c.name))
       .reduce((sum, cat) => sum + cat.count, 0)
     return `${selectedCount} contact${selectedCount !== 1 ? 's' : ''} in ${formData.targetCategories.length} categor${formData.targetCategories.length !== 1 ? 'ies' : 'y'}`
+  }
+
+  const getRecipientCount = () => {
+    if (formData.targetCategories.length === 0) return 0
+    if (formData.targetCategories.includes('all')) {
+      return categories.reduce((sum, cat) => sum + cat.count, 0)
+    }
+    return categories
+      .filter(c => formData.targetCategories.includes(c.name))
+      .reduce((sum, cat) => sum + cat.count, 0)
   }
 
   if (!isOpen) return null
@@ -272,14 +283,15 @@ export default function CreateCampaignModal({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Message *
             </label>
-            <textarea
+            <MessageInputWithStats
               value={formData.message}
-              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-              rows={5}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(value) => setFormData({ ...formData, message: value })}
+              recipientCount={getRecipientCount()}
+              targetCategories={formData.targetCategories}
               placeholder="Type your campaign message..."
+              rows={5}
+              showCostEstimate={true}
             />
-            <p className="mt-1 text-xs text-gray-500">{formData.message.length} characters</p>
           </div>
         </div>
         <div className="flex space-x-4">

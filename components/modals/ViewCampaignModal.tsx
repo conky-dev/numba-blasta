@@ -186,19 +186,11 @@ export default function ViewCampaignModal({
               </div>
 
               {/* Recipients */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Total Recipients
-                  </label>
-                  <p className="text-2xl font-bold text-gray-900">{campaign.total_recipients || 0}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Messages Sent
-                  </label>
-                  <p className="text-2xl font-bold text-blue-600">{campaign.sent_count || 0}</p>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Total Recipients
+                </label>
+                <p className="text-2xl font-bold text-gray-900">{campaign.total_recipients || 0}</p>
               </div>
 
               {/* Metrics */}
