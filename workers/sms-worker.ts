@@ -276,7 +276,7 @@ try {
       
       if (twilioClient && process.env.TWILIO_MESSAGING_SERVICE_SID) {
         // Real Twilio send
-        console.log(`[WORKER]  📤 Sending SMS to ${to} via Twilio`);
+        console.log(`[WORKER]   📤 Sending SMS to ${to} via Twilio`);
         
         try {
           // 🧪 TESTING (DISABLED):
