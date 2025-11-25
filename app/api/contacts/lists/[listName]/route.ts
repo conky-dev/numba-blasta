@@ -13,28 +13,55 @@ export async function DELETE(
 
     const listName = decodeURIComponent(params.listName)
 
-    // Remove the category from all contacts in this list
-    // The contacts remain visible, they just lose this category
-    // The MV will mark this category as soft_deleted when refreshed
+    // Remove the category from all contacts in this list,
+    // and mark contacts with empty categories as deleted (all in one query)
     const result = await query(
       `
-      UPDATE contacts
-      SET 
-        category = array_remove(category, $2),
-        updated_at = NOW()
-      WHERE org_id = $1 
-        AND $2 = ANY(category)
-      RETURNING id
+      WITH removed AS (
+        UPDATE contacts
+        SET 
+          category = array_remove(category, $2),
+          updated_at = NOW()
+        WHERE org_id = $1 
+          AND $2 = ANY(category)
+        RETURNING id, category
+      ),
+      orphans_deleted AS (
+        UPDATE contacts
+        SET 
+          deleted_at = NOW(),
+          updated_at = NOW()
+        WHERE id IN (
+          SELECT id FROM removed 
+          WHERE category IS NULL 
+             OR array_length(category, 1) IS NULL 
+             OR array_length(category, 1) = 0
+        )
+        RETURNING id
+      )
+      SELECT 
+        (SELECT COUNT(*) FROM removed) as removed_count,
+        (SELECT COUNT(*) FROM orphans_deleted) as orphans_count
       `,
       [authContext.orgId, listName]
     )
 
-    // Refresh the materialized view to mark the category as soft_deleted
+    // Refresh the materialized view
     await query('REFRESH MATERIALIZED VIEW CONCURRENTLY contact_category_counts')
 
+    const removedCount = parseInt(result.rows[0]?.removed_count || '0')
+    const orphanCount = parseInt(result.rows[0]?.orphans_count || '0')
+    
+    let message = `Successfully removed category "${listName}" from ${removedCount} contact(s).`
+    
+    if (orphanCount > 0) {
+      message += ` ${orphanCount} contact(s) that were only in this list have been marked as deleted.`
+    }
+
     return NextResponse.json({ 
-      deleted: result.rowCount,
-      message: `Successfully removed category "${listName}" from ${result.rowCount} contact(s). The contacts remain visible in your list.`
+      deleted: removedCount,
+      orphansDeleted: orphanCount,
+      message
     })
   } catch (error: any) {
     console.error('[DELETE-LIST] Error:', error)
