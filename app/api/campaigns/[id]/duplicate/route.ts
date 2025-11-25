@@ -16,7 +16,7 @@ export async function POST(
 
     // Get original campaign
     const result = await query(
-      `SELECT name, message, template_id, list_id
+      `SELECT name, message, template_id, list_id, target_categories, total_recipients
        FROM sms_campaigns 
        WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
       [campaignId, auth.orgId]
@@ -31,16 +31,16 @@ export async function POST(
 
     const original = result.rows[0];
 
-    // Create duplicate with "(Copy)" suffix
-    const newName = `${original.name} (Copy)`;
+    // Use the same name (no "(Copy)" suffix)
+    const newName = original.name;
     
     const duplicateResult = await query(
       `INSERT INTO sms_campaigns (
-        org_id, name, message, template_id, list_id, status, created_by
+        org_id, name, message, template_id, list_id, target_categories, total_recipients, status, created_by
       )
-      VALUES ($1, $2, $3, $4, $5, 'draft', $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', $8)
       RETURNING 
-        id, name, message, template_id, list_id, status, 
+        id, name, message, template_id, list_id, target_categories, total_recipients, status, 
         created_at, updated_at`,
       [
         auth.orgId,
@@ -48,6 +48,8 @@ export async function POST(
         original.message,
         original.template_id,
         original.list_id,
+        original.target_categories,
+        original.total_recipients,
         auth.userId
       ]
     );

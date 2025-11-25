@@ -37,6 +37,7 @@ export default function CreateCampaignModal({
     targetCategories: []
   })
   const [categories, setCategories] = useState<Category[]>([])
+  const [totalContacts, setTotalContacts] = useState(0)
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
@@ -63,6 +64,7 @@ export default function CreateCampaignModal({
       }
       
       setCategories(data?.categories || [])
+      setTotalContacts(data?.total || 0)
     } catch (error) {
       console.error('Load categories error:', error)
     } finally {
@@ -71,37 +73,24 @@ export default function CreateCampaignModal({
   }
 
   const handleCategoryToggle = (categoryName: string) => {
-    if (categoryName === 'all') {
-      // Toggle "all" - if selected, deselect all, if not, select only "all"
-      if (formData.targetCategories.includes('all')) {
-        setFormData({ ...formData, targetCategories: [] })
-      } else {
-        setFormData({ ...formData, targetCategories: ['all'] })
-      }
+    // Toggle individual category
+    const newCategories = [...formData.targetCategories]
+    if (newCategories.includes(categoryName)) {
+      setFormData({ 
+        ...formData, 
+        targetCategories: newCategories.filter(c => c !== categoryName) 
+      })
     } else {
-      // Toggle individual category
-      const newCategories = [...formData.targetCategories].filter(c => c !== 'all')
-      if (newCategories.includes(categoryName)) {
-        setFormData({ 
-          ...formData, 
-          targetCategories: newCategories.filter(c => c !== categoryName) 
-        })
-      } else {
-        setFormData({ 
-          ...formData, 
-          targetCategories: [...newCategories, categoryName] 
-        })
-      }
+      setFormData({ 
+        ...formData, 
+        targetCategories: [...newCategories, categoryName] 
+      })
     }
   }
 
   const getRecipientDisplay = () => {
     if (formData.targetCategories.length === 0) {
       return 'No recipients selected'
-    }
-    if (formData.targetCategories.includes('all')) {
-      const total = categories.reduce((sum, cat) => sum + cat.count, 0)
-      return `All contacts (${total})`
     }
     const selectedCount = categories
       .filter(c => formData.targetCategories.includes(c.name))
@@ -111,9 +100,6 @@ export default function CreateCampaignModal({
 
   const getRecipientCount = () => {
     if (formData.targetCategories.length === 0) return 0
-    if (formData.targetCategories.includes('all')) {
-      return categories.reduce((sum, cat) => sum + cat.count, 0)
-    }
     return categories
       .filter(c => formData.targetCategories.includes(c.name))
       .reduce((sum, cat) => sum + cat.count, 0)
@@ -226,24 +212,6 @@ export default function CreateCampaignModal({
               </div>
             ) : (
               <div className="border border-gray-300 rounded-md p-3 space-y-2 max-h-48 overflow-y-auto">
-                {/* "All Contacts" option */}
-                <label className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                  <input
-                    type="checkbox"
-                    checked={formData.targetCategories.includes('all')}
-                    onChange={() => handleCategoryToggle('all')}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="flex-1 text-sm font-medium text-gray-900">
-                    All Contacts
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {categories.reduce((sum, cat) => sum + cat.count, 0)}
-                  </span>
-                </label>
-
-                <div className="border-t border-gray-200 my-2"></div>
-
                 {/* Category checkboxes */}
                 {categories.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-2">
@@ -259,13 +227,12 @@ export default function CreateCampaignModal({
                         type="checkbox"
                         checked={formData.targetCategories.includes(category.name)}
                         onChange={() => handleCategoryToggle(category.name)}
-                        disabled={formData.targetCategories.includes('all')}
-                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                       />
-                      <span className={`flex-1 text-sm ${formData.targetCategories.includes('all') ? 'text-gray-400' : 'text-gray-700'}`}>
+                      <span className="flex-1 text-sm text-gray-700">
                         {category.name}
                       </span>
-                      <span className={`text-sm ${formData.targetCategories.includes('all') ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <span className="text-sm text-gray-500">
                         {category.count}
                       </span>
                     </label>

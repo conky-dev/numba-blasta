@@ -568,25 +568,12 @@ export default function QuickSMSPage() {
   }
 
   const handleCategoryToggle = (category: string) => {
-    if (category === 'all') {
-      // Toggle all - if 'all' is selected, deselect everything, otherwise select 'all'
-      if (to.includes('all')) {
-        setTo([])
-      } else {
-        setTo(['all'])
-      }
+    if (to.includes(category)) {
+      // Remove the category
+      setTo(to.filter(c => c !== category))
     } else {
-      // Remove 'all' if a specific category is selected
-      const newSelection = to.filter(c => c !== 'all')
-      
-      if (newSelection.includes(category)) {
-        // Remove the category
-        const updated = newSelection.filter(c => c !== category)
-        setTo(updated.length === 0 ? ['all'] : updated)
-      } else {
-        // Add the category
-        setTo([...newSelection, category])
-      }
+      // Add the category
+      setTo([...to, category])
     }
   }
 
@@ -787,24 +774,6 @@ export default function QuickSMSPage() {
               </div>
             ) : (
               <div className="border border-gray-300 rounded-md p-4 space-y-2 max-h-64 overflow-y-auto">
-                {/* All Contacts option */}
-                <label className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                  <input
-                    type="checkbox"
-                    checked={to.includes('all')}
-                    onChange={() => handleCategoryToggle('all')}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="flex-1 text-sm font-medium text-gray-900">
-                    All Contacts
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {totalContacts}
-                  </span>
-                </label>
-
-                <div className="border-t border-gray-200 my-2"></div>
-
                 {/* Category checkboxes */}
                 {categories.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-2">
@@ -820,13 +789,12 @@ export default function QuickSMSPage() {
                         type="checkbox"
                         checked={to.includes(category.name)}
                         onChange={() => handleCategoryToggle(category.name)}
-                        disabled={to.includes('all')}
-                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                       />
-                      <span className={`flex-1 text-sm ${to.includes('all') ? 'text-gray-400' : 'text-gray-700'}`}>
+                      <span className="flex-1 text-sm text-gray-700">
                         {category.name}
                       </span>
-                      <span className={`text-sm ${to.includes('all') ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <span className="text-sm text-gray-500">
                         {category.count}
                       </span>
                     </label>
