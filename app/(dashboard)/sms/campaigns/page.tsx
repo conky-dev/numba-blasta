@@ -404,7 +404,7 @@ export default function CampaignsPage() {
   const handleTopUp = async (amount: number) => {
     try {
       const token = localStorage.getItem('auth_token')
-      const response = await fetch('/api/billing/checkout', {
+      const response = await fetch('/api/billing/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
