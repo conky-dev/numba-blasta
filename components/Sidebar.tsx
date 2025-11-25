@@ -49,7 +49,7 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({ SMS: true })
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({ SMS: true, Settings: true })
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [userInfo, setUserInfo] = useState<{
