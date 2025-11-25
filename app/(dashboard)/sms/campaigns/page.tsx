@@ -8,6 +8,8 @@ import ScheduleCampaignModal from '@/components/modals/ScheduleCampaignModal'
 import ViewCampaignModal from '@/components/modals/ViewCampaignModal'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import InsufficientFundsModal from '@/components/modals/InsufficientFundsModal'
+import BalanceModal from '@/components/modals/BalanceModal'
 import { api } from '@/lib/api-client'
 
 interface Campaign {
@@ -59,10 +61,34 @@ export default function CampaignsPage() {
     message: '',
     onConfirm: () => {}
   })
+  const [currentBalance, setCurrentBalance] = useState<number>(0)
+  const [showInsufficientFundsModal, setShowInsufficientFundsModal] = useState(false)
+  const [showBalanceModal, setShowBalanceModal] = useState(false)
+  const [suggestedTopUpAmount, setSuggestedTopUpAmount] = useState<number>(0)
+  const [pendingSchedule, setPendingSchedule] = useState<{ id: string; name: string; scheduledAt: string; estimatedCost: number; recipients: number; segments: number } | null>(null)
 
   useEffect(() => {
     fetchCampaigns()
+    loadBalance()
   }, [statusFilter, searchTerm])
+
+  const loadBalance = async () => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/billing/balance', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentBalance(parseFloat(data.balance || '0'))
+      }
+    } catch (error) {
+      console.error('Failed to load balance:', error)
+    }
+  }
 
   const fetchCampaigns = async () => {
     try {
@@ -240,9 +266,95 @@ export default function CampaignsPage() {
   const handleScheduleConfirm = async (scheduledAt: string) => {
     if (!schedulingCampaign) return
 
+    // First, check the balance by fetching campaign details
     try {
       const token = localStorage.getItem('auth_token')
-      const response = await fetch(`/api/campaigns/${schedulingCampaign.id}/send`, {
+      const campaignResponse = await fetch(`/api/campaigns/${schedulingCampaign.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!campaignResponse.ok) {
+        throw new Error('Failed to fetch campaign details')
+      }
+
+      const campaignData = await campaignResponse.json()
+      const campaign = campaignData.campaign
+
+      // Get pricing to calculate cost
+      const pricingResponse = await fetch('/api/billing/pricing', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!pricingResponse.ok) {
+        throw new Error('Failed to fetch pricing')
+      }
+
+      const pricingData = await pricingResponse.json()
+      const outboundPrice = pricingData?.pricing?.find((p: any) => p.serviceType === 'outbound_message')
+      const costPerSegment = outboundPrice?.pricePerUnit || 0.0083
+
+      // Calculate message with opt-out
+      const OPT_OUT_TEXT = '\n\nReply STOP to unsubscribe.'
+      const fullMessage = (campaign.message || '') + OPT_OUT_TEXT
+      
+      // Simple segment calculation (same as MessageInputWithStats)
+      const GSM_7BIT_BASIC = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà'
+      const GSM_7BIT_EXTENDED = '|^€{}[]~\\'
+      
+      const hasNonGSM = Array.from(fullMessage).some(char => 
+        !GSM_7BIT_BASIC.includes(char) && !GSM_7BIT_EXTENDED.includes(char) && char !== '\f'
+      )
+      
+      let segments = 1
+      if (hasNonGSM) {
+        segments = fullMessage.length <= 70 ? 1 : Math.ceil(fullMessage.length / 67)
+      } else {
+        let effectiveLength = 0
+        for (const char of fullMessage) {
+          if (GSM_7BIT_EXTENDED.includes(char) || char === '\f') {
+            effectiveLength += 2
+          } else {
+            effectiveLength += 1
+          }
+        }
+        segments = effectiveLength <= 160 ? 1 : Math.ceil(effectiveLength / 153)
+      }
+
+      const estimatedTotalCost = campaign.total_recipients * segments * costPerSegment
+
+      // Check if balance is sufficient
+      if (estimatedTotalCost > currentBalance) {
+        // Store pending schedule for after balance top-up
+        setPendingSchedule({ 
+          id: schedulingCampaign.id, 
+          name: schedulingCampaign.name, 
+          scheduledAt,
+          estimatedCost: estimatedTotalCost,
+          recipients: campaign.total_recipients,
+          segments
+        })
+        setShowScheduleModal(false)
+        setSchedulingCampaign(null)
+        setShowInsufficientFundsModal(true)
+        return
+      }
+
+      // Balance is sufficient, proceed with scheduling
+      await proceedWithSchedule(schedulingCampaign.id, scheduledAt)
+    } catch (error: any) {
+      console.error('Schedule campaign error:', error)
+      throw error // Let the modal handle the error
+    }
+  }
+
+  const proceedWithSchedule = async (campaignId: string, scheduledAt: string) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch(`/api/campaigns/${campaignId}/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -267,9 +379,60 @@ export default function CampaignsPage() {
       setShowScheduleModal(false)
       setSchedulingCampaign(null)
       await fetchCampaigns()
+      await loadBalance() // Refresh balance
     } catch (error: any) {
       console.error('Schedule campaign error:', error)
-      throw error // Let the modal handle the error
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to schedule campaign',
+        title: 'Error',
+        type: 'error'
+      })
+    }
+  }
+
+  const handleOpenAddFunds = () => {
+    if (pendingSchedule) {
+      // Calculate shortfall
+      const shortfall = pendingSchedule.estimatedCost - currentBalance
+      const suggestedAmount = shortfall < 10 ? 10 : shortfall
+      setSuggestedTopUpAmount(suggestedAmount)
+    }
+    setShowBalanceModal(true)
+  }
+
+  const handleTopUp = async (amount: number) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ amount })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to create checkout session')
+      }
+
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error('No checkout URL returned')
+      }
+    } catch (error: any) {
+      console.error('Create checkout session error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to start payment process',
+        title: 'Error',
+        type: 'error'
+      })
     }
   }
 
@@ -603,6 +766,27 @@ export default function CampaignsPage() {
         title={confirmModal.title}
         type="danger"
         confirmText="Delete"
+      />
+
+      <InsufficientFundsModal
+        isOpen={showInsufficientFundsModal}
+        onClose={() => {
+          setShowInsufficientFundsModal(false)
+          setPendingSchedule(null)
+        }}
+        onAddFunds={handleOpenAddFunds}
+        currentBalance={currentBalance}
+        requiredAmount={pendingSchedule?.estimatedCost || 0}
+        recipientCount={pendingSchedule?.recipients || 0}
+        messageSegments={pendingSchedule?.segments || 1}
+      />
+
+      <BalanceModal
+        isOpen={showBalanceModal}
+        onClose={() => setShowBalanceModal(false)}
+        currentBalance={currentBalance}
+        onTopUp={handleTopUp}
+        suggestedAmount={suggestedTopUpAmount}
       />
     </div>
   )

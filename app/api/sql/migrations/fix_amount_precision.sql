@@ -6,18 +6,45 @@
 -- DECIMAL(12,4) = 12 total digits, 4 after decimal = max 99,999,999.9999
 -- ============================================================================
 
--- Change amount column precision from DECIMAL(10,2) to DECIMAL(12,4)
+-- Step 1: Update organizations.sms_balance to DECIMAL(12,4)
+ALTER TABLE organizations 
+  ALTER COLUMN sms_balance TYPE DECIMAL(12,4);
+
+-- Step 2: Update billing_transactions columns to DECIMAL(12,4)
 ALTER TABLE billing_transactions 
   ALTER COLUMN amount TYPE DECIMAL(12,4);
 
--- Also update balance columns for consistency
 ALTER TABLE billing_transactions 
   ALTER COLUMN balance_before TYPE DECIMAL(12,4);
 
 ALTER TABLE billing_transactions 
   ALTER COLUMN balance_after TYPE DECIMAL(12,4);
 
--- Update the deduct_credits function to accept DECIMAL(12,4)
+-- Step 3: Drop legacy balance_cents column from organizations if it exists
+DO $$ 
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'organizations' 
+    AND column_name = 'balance_cents'
+  ) THEN
+    ALTER TABLE organizations DROP COLUMN balance_cents;
+  END IF;
+END $$;
+
+-- Step 4: Drop legacy sms_balance column from user_profiles (balance moved to organizations)
+DO $$ 
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'user_profiles' 
+    AND column_name = 'sms_balance'
+  ) THEN
+    ALTER TABLE user_profiles DROP COLUMN sms_balance;
+  END IF;
+END $$;
+
+-- Step 4: Update the deduct_credits function to accept DECIMAL(12,4)
 CREATE OR REPLACE FUNCTION deduct_credits(
   p_org_id UUID,
   p_amount DECIMAL(12,4),  -- Changed from DECIMAL(10,2) to DECIMAL(12,4)
