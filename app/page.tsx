@@ -240,17 +240,17 @@ export default function LoginPage() {
           </form>
 
           {/* Divider */}
-          <div className="relative my-6">
+          {/* <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-200"></div>
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-4 bg-white text-gray-500">Or continue with</span>
             </div>
-          </div>
+          </div> */}
 
           {/* Social Login Buttons */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setAlertModal({
@@ -287,7 +287,7 @@ export default function LoginPage() {
               </svg>
               <span className="ml-2 text-sm font-medium text-gray-700">Microsoft</span>
             </button>
-          </div>
+          </div> */}
 
           {/* Sign Up Link */}
           <div className="mt-6 text-center">
@@ -301,6 +301,28 @@ export default function LoginPage() {
                 Sign up
               </button>
             </p>
+          </div>
+
+          {/* Terms and Privacy Links */}
+          <div className="mt-4 text-center text-xs text-gray-500">
+            By signing in, you agree to our{' '}
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-700 underline"
+            >
+              Terms of Service
+            </a>
+            {' '}and{' '}
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-700 underline"
+            >
+              Privacy Policy
+            </a>
           </div>
         </div>
 
