@@ -77,6 +77,82 @@ export async function sendEmailVerification(email: string, code: string) {
 }
 
 /**
+ * Send a login verification code email (no verify button, just the code)
+ */
+export async function sendLoginVerificationCode(email: string, code: string) {
+  if (!POSTMARK_API_TOKEN || !SENDER_EMAIL) {
+    console.warn(
+      '[EMAIL] Postmark not configured. Skipping login verification email for',
+      email
+    );
+    return;
+  }
+
+  const subject = 'Your SMSblast Login Code';
+
+  const textBody = [
+    'Your login verification code',
+    '',
+    'Someone is trying to sign in to your SMSblast account.',
+    '',
+    `Your verification code is: ${code}`,
+    '',
+    'This code will expire in 15 minutes.',
+    '',
+    'If you did not attempt to sign in, please ignore this email and ensure your account password is secure.',
+  ].join('\n');
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #2563eb;">Your Login Verification Code</h2>
+      <p>Someone is trying to sign in to your <strong>SMSblast</strong> account.</p>
+      
+      <div style="background-color: #f3f4f6; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
+        <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+          Your Verification Code
+        </p>
+        <p style="margin: 0; font-size: 36px; font-weight: bold; color: #1f2937; letter-spacing: 8px; font-family: 'Courier New', monospace;">
+          ${code}
+        </p>
+      </div>
+
+      <p style="color: #6b7280; font-size: 14px;">
+        This code will expire in <strong>15 minutes</strong>.
+      </p>
+
+      <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e; font-size: 14px;">
+          <strong>⚠️ Security Notice:</strong> If you did not attempt to sign in, please ignore this email and ensure your account password is secure.
+        </p>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+
+      <p style="color: #9ca3af; font-size: 12px; text-align: center;">
+        This is an automated message from SMSblast. Please do not reply to this email.
+      </p>
+    </div>
+  `;
+
+  await fetch('https://api.postmarkapp.com/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Postmark-Server-Token': POSTMARK_API_TOKEN,
+    },
+    body: JSON.stringify({
+      From: SENDER_NAME ? `${SENDER_NAME} <${SENDER_EMAIL}>` : SENDER_EMAIL,
+      To: email,
+      Subject: subject,
+      TextBody: textBody,
+      HtmlBody: htmlBody,
+      MessageStream: 'outbound',
+    }),
+  });
+}
+
+/**
  * Send a password reset email using Postmark's HTTP API.
  */
 export async function sendPasswordResetEmail(

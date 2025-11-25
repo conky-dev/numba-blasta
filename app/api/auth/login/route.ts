@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { comparePassword, generateToken } from '@/app/api/_lib/auth-utils';
 import { query } from '@/app/api/_lib/db';
+import { sendLoginVerificationCode } from '@/app/api/_lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,48 +53,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Require verified email before allowing login
-    if (!authUser.email_confirmed_at) {
-      return NextResponse.json(
-        {
-          error:
-            'Your email address has not been verified yet. Please check your inbox for the verification link.',
-        },
-        { status: 403 }
-      );
-    }
+    // Generate and send verification code (always required for login)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-    // Get user profile
-    const profileResult = await query(
-      'SELECT * FROM user_profiles WHERE user_id = $1',
-      [authUser.id]
+    // Store the verification code
+    await query(
+      `INSERT INTO verification_codes (email, code, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (email) 
+       DO UPDATE SET code = $2, expires_at = $3, created_at = NOW()`,
+      [authUser.email, verificationCode, expiresAt]
     );
 
-    if (profileResult.rows.length === 0) {
+    // Send verification email
+    try {
+      await sendLoginVerificationCode(authUser.email, verificationCode);
+    } catch (emailError: any) {
+      console.error('Failed to send verification email:', emailError);
       return NextResponse.json(
-        { error: 'User profile not found' },
-        { status: 404 }
+        { error: 'Failed to send verification code. Please try again.' },
+        { status: 500 }
       );
     }
-
-    const profile = profileResult.rows[0];
-
-    // Generate JWT token
-    const token = generateToken({
-      userId: authUser.id,
-      email: authUser.email,
-    });
 
     return NextResponse.json({
       success: true,
-      token,
-      user: {
-        id: profile.id,
-        email: authUser.email,
-        fullName: profile.full_name,
-        phoneNumber: profile.phone_number,
-        smsBalance: profile.sms_balance,
-      },
+      message: 'Verification code sent to your email',
+      requiresVerification: true,
     });
   } catch (error: any) {
     console.error('Login error:', error);

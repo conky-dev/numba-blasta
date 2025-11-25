@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MdEmail, MdLock, MdVisibility, MdVisibilityOff } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
+import VerificationModal from '@/components/modals/VerificationModal'
 import { api } from '@/lib/api-client'
 
 export default function LoginPage() {
@@ -15,6 +16,8 @@ export default function LoginPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
   const [isSendingReset, setIsSendingReset] = useState(false)
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -50,14 +53,20 @@ export default function LoginPage() {
         return
       }
 
-      // Store session in localStorage
+      // Check if verification is required
+      if (data?.requiresVerification) {
+        setLoginEmail(email)
+        setShowVerifyModal(true)
+        setIsLoading(false)
+        return
+      }
+
+      // Legacy path: if token is returned directly (shouldn't happen with new flow)
       if (data?.token) {
         localStorage.setItem('auth_token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
+        router.push('/dashboard')
       }
-
-      // Success! Redirect to dashboard
-      router.push('/dashboard')
     } catch (error) {
       console.error('Login error:', error)
       setAlertModal({
@@ -68,6 +77,11 @@ export default function LoginPage() {
       })
       setIsLoading(false)
     }
+  }
+
+  const handleVerified = () => {
+    setShowVerifyModal(false)
+    router.push('/dashboard')
   }
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -406,6 +420,17 @@ export default function LoginPage() {
           </div>
         </div>
       )}
+
+      {/* Verification Modal */}
+      <VerificationModal
+        isOpen={showVerifyModal}
+        email={loginEmail}
+        onVerified={handleVerified}
+        onCancel={() => {
+          setShowVerifyModal(false)
+          setIsLoading(false)
+        }}
+      />
 
       <AlertModal
         isOpen={alertModal.isOpen}
