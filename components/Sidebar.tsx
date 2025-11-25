@@ -37,6 +37,7 @@ const menuItems = [
       { name: 'Team', href: '/settings/team' },
       { name: 'Phone Numbers', href: '/settings/phone-numbers' },
       { name: 'Pricing', href: '/settings/pricing' },
+      { name: 'Billing', href: '/billing' },
     ]
   },
 ]

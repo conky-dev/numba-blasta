@@ -5,6 +5,8 @@ import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
+import InsufficientFundsModal from '@/components/modals/InsufficientFundsModal'
+import BalanceModal from '@/components/modals/BalanceModal'
 import RateLimitDisplay from '@/components/RateLimitDisplay'
 import MessageInputWithStats from '@/components/MessageInputWithStats'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
@@ -54,6 +56,11 @@ export default function QuickSMSPage() {
     windowEnd?: string | null
   } | null>(null)
   const [loadingRateLimit, setLoadingRateLimit] = useState(false)
+  const [currentBalance, setCurrentBalance] = useState<number>(0)
+  const [loadingBalance, setLoadingBalance] = useState(true)
+  const [showInsufficientFundsModal, setShowInsufficientFundsModal] = useState(false)
+  const [showBalanceModal, setShowBalanceModal] = useState(false)
+  const [suggestedTopUpAmount, setSuggestedTopUpAmount] = useState<number>(0)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -71,6 +78,32 @@ export default function QuickSMSPage() {
     api.templates.list({ limit: 100 }).catch(() => {
       // Silently fail - modal will retry if needed
     })
+  }, [])
+
+  // Load current balance
+  useEffect(() => {
+    const loadBalance = async () => {
+      setLoadingBalance(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const response = await fetch('/api/billing/balance', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setCurrentBalance(data.balance || 0)
+        }
+      } catch (error) {
+        console.error('Failed to load balance:', error)
+      } finally {
+        setLoadingBalance(false)
+      }
+    }
+
+    loadBalance()
   }, [])
 
   // Load pricing for cost estimation
@@ -392,6 +425,12 @@ export default function QuickSMSPage() {
       return
     }
 
+    // Check if user has sufficient balance
+    if (estimatedTotalCost > currentBalance) {
+      setShowInsufficientFundsModal(true)
+      return
+    }
+
     // Check rate limit before showing preview
     if (selectedPhoneRateLimit) {
       const messagesNeeded = selectedContactCount
@@ -630,6 +669,47 @@ export default function QuickSMSPage() {
       })
     } finally {
       setProvisioningSender(false)
+    }
+  }
+
+  const handleOpenAddFunds = () => {
+    const shortfall = estimatedTotalCost - currentBalance
+    setSuggestedTopUpAmount(shortfall)
+    setShowBalanceModal(true)
+  }
+
+  const handleTopUp = async (amount: number) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/billing/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ amount })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to create checkout session')
+      }
+
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error('No checkout URL returned')
+      }
+    } catch (error: any) {
+      console.error('Create checkout session error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to start payment process',
+        title: 'Error',
+        type: 'error'
+      })
     }
   }
 
@@ -1081,6 +1161,24 @@ export default function QuickSMSPage() {
         message={alertModal.message}
         title={alertModal.title}
         type={alertModal.type}
+      />
+
+      <InsufficientFundsModal
+        isOpen={showInsufficientFundsModal}
+        onClose={() => setShowInsufficientFundsModal(false)}
+        onAddFunds={handleOpenAddFunds}
+        currentBalance={currentBalance}
+        requiredAmount={estimatedTotalCost}
+        recipientCount={selectedContactCount}
+        messageSegments={smsCount}
+      />
+
+      <BalanceModal
+        isOpen={showBalanceModal}
+        onClose={() => setShowBalanceModal(false)}
+        currentBalance={currentBalance}
+        onTopUp={handleTopUp}
+        suggestedAmount={suggestedTopUpAmount}
       />
 
       <ConfirmModal

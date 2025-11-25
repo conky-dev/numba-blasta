@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AlertModal from '@/components/modals/AlertModal'
 
 interface BalanceModalProps {
@@ -8,13 +8,15 @@ interface BalanceModalProps {
   onClose: () => void
   currentBalance: number
   onTopUp: (amount: number) => void
+  suggestedAmount?: number
 }
 
 export default function BalanceModal({
   isOpen,
   onClose,
   currentBalance,
-  onTopUp
+  onTopUp,
+  suggestedAmount
 }: BalanceModalProps) {
   const [topUpAmount, setTopUpAmount] = useState('')
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
@@ -22,6 +24,15 @@ export default function BalanceModal({
     message: '',
     type: 'info'
   })
+
+  // Set suggested amount when modal opens
+  useEffect(() => {
+    if (isOpen && suggestedAmount) {
+      // If suggested amount is less than $10, default to $10
+      const defaultAmount = suggestedAmount < 10 ? 10 : suggestedAmount
+      setTopUpAmount(defaultAmount.toFixed(2))
+    }
+  }, [isOpen, suggestedAmount])
 
   if (!isOpen) return null
 
