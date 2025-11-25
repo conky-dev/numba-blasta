@@ -882,7 +882,7 @@ export default function QuickSMSPage() {
           </div>
 
           {/* Shorten URL toggle */}
-          <div className="flex items-center space-x-3">
+          {/* <div className="flex items-center space-x-3">
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -897,10 +897,10 @@ export default function QuickSMSPage() {
               <MdLink className="w-4 h-4" />
               <span>Shorten my URL (Coming soon)</span>
             </span>
-          </div>
+          </div> */}
 
           {/* Send Time */}
-          <div>
+          {/* <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Send Time
             </label>
@@ -939,7 +939,7 @@ export default function QuickSMSPage() {
                 />
               </div>
             )}
-          </div>
+          </div> */}
 
           {/* Submit button */}
           <div className="flex justify-center pt-4">
