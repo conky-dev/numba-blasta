@@ -413,11 +413,20 @@ export default function CampaignsPage() {
         body: JSON.stringify({ amount })
       })
 
-      const data = await response.json()
-
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to create checkout session')
+      if (!response.ok) {
+        const errorText = await response.text()
+        let errorMessage = 'Failed to create checkout session'
+        try {
+          const errorData = JSON.parse(errorText)
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          // If not JSON, use the text as error message
+          errorMessage = errorText || errorMessage
+        }
+        throw new Error(errorMessage)
       }
+
+      const data = await response.json()
 
       // Redirect to Stripe Checkout
       if (data.url) {
