@@ -29,7 +29,7 @@ export async function GET(
         name,
         email,
         phone,
-        balance_cents,
+        sms_balance,
         status,
         created_at
        FROM organizations
@@ -52,7 +52,7 @@ export async function GET(
         name: org.name,
         email: org.email,
         phone: org.phone,
-        balance: org.balance_cents / 100,
+        balance: parseFloat(org.sms_balance || '0'),
         status: org.status,
         createdAt: org.created_at,
       },

@@ -439,7 +439,7 @@ try {
                   'failed',
                   'Invalid phone number',
                   segments,
-                  Math.round(invalidAttemptCost * 100) // price_cents
+                  invalidAttemptCost // price_cents (in dollars)
                 ]
               );
               console.log(`[WORKER] 📝 Saved failed message record for invalid number`);
@@ -517,7 +517,7 @@ try {
             'outbound',
             twilioStatus, // Use Twilio status or 'sent'
             segments, // Actual calculated segments
-            Math.round(cost * 100), // Cost in cents
+            cost, // Cost in dollars (not cents)
             campaignId || null,
             templateId || null,
             userId,

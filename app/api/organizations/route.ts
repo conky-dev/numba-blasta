@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const orgResult = await query(
       `INSERT INTO organizations (name, email, phone)
        VALUES ($1, $2, $3)
-       RETURNING id, name, email, phone, balance_cents, created_at`,
+       RETURNING id, name, email, phone, sms_balance, created_at`,
       [name.trim(), email, phone?.trim() || null]
     );
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         name: org.name,
         email: org.email,
         phone: org.phone,
-        balance: org.balance_cents / 100,
+        balance: parseFloat(org.sms_balance || '0'),
         role: 'owner',
         createdAt: org.created_at,
       },

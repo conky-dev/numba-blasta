@@ -293,7 +293,7 @@ export default function HistoryPage() {
                       <div className="line-clamp-2">{msg.body}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      ${(msg.priceCents / 100).toFixed(3)}
+                      ${msg.priceCents}
                     </td>
                   </tr>
                 ))
