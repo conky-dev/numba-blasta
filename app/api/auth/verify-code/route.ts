@@ -43,42 +43,39 @@ export async function POST(request: NextRequest) {
       email_confirmed_at: string | null;
     };
 
-    // If already verified, we can just treat this as success and log them in
-    // but we'll still check the code existence to avoid leaking info.
-    const tokenResult = await query(
-      `SELECT id
-       FROM email_verification_tokens
-       WHERE user_id = $1
-         AND token = $2
-         AND used_at IS NULL
+    // Check the verification_codes table (used for both signup and login)
+    const codeResult = await query(
+      `SELECT id, code, expires_at
+       FROM verification_codes
+       WHERE LOWER(TRIM(email)) = $1
+         AND code = $2
          AND expires_at > NOW()
        LIMIT 1`,
-      [user.id, trimmedCode]
+      [normalizedEmail, trimmedCode]
     );
 
-    if (tokenResult.rows.length === 0) {
+    if (codeResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Invalid or expired verification code' },
         { status: 400 }
       );
     }
 
-    // Mark token as used and set email_confirmed_at on user
+    // Mark email as verified and delete the used code
     await query('BEGIN');
     try {
       await query(
-        `UPDATE email_verification_tokens
-         SET used_at = NOW()
-         WHERE user_id = $1
-           AND token = $2`,
-        [user.id, trimmedCode]
-      );
-
-      await query(
         `UPDATE auth.users
-         SET email_confirmed_at = NOW()
+         SET email_confirmed_at = COALESCE(email_confirmed_at, NOW())
          WHERE id = $1`,
         [user.id]
+      );
+
+      // Delete the used verification code
+      await query(
+        `DELETE FROM verification_codes
+         WHERE LOWER(TRIM(email)) = $1`,
+        [normalizedEmail]
       );
 
       await query('COMMIT');

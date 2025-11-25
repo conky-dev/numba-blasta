@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MdEdit, MdDelete, MdContentCopy, MdPlayArrow, MdPause, MdSend, MdSchedule, MdCancel } from 'react-icons/md'
+import { MdEdit, MdDelete, MdPlayArrow, MdPause, MdSend, MdSchedule, MdCancel } from 'react-icons/md'
 import CreateCampaignModal from '@/components/modals/CreateCampaignModal'
 import EditCampaignModal from '@/components/modals/EditCampaignModal'
 import ScheduleCampaignModal from '@/components/modals/ScheduleCampaignModal'
@@ -132,33 +132,6 @@ export default function CampaignsPage() {
         }
       }
     })
-  }
-
-  const handleDuplicate = async (id: string) => {
-    try {
-      const { error } = await api.campaigns.duplicate(id)
-
-      if (error) {
-        throw new Error(error)
-      }
-
-      setAlertModal({
-        isOpen: true,
-        message: 'Campaign duplicated successfully',
-        title: 'Success',
-        type: 'success'
-      })
-
-      await fetchCampaigns()
-    } catch (error: any) {
-      console.error('Duplicate campaign error:', error)
-      setAlertModal({
-        isOpen: true,
-        message: error.message || 'Failed to duplicate campaign',
-        title: 'Error',
-        type: 'error'
-      })
-    }
   }
 
   const handlePause = async (id: string) => {
@@ -502,17 +475,6 @@ export default function CampaignsPage() {
                           </button>
                         )}
                         
-                        {/* Send Now - only for draft/scheduled */}
-                        {['draft', 'scheduled'].includes(campaign.status) && (
-                          <button
-                            onClick={() => handleSend(campaign.id, campaign.name)}
-                            className="text-green-500 hover:text-green-700"
-                            title="Send Now"
-                          >
-                            <MdSend className="w-5 h-5" />
-                          </button>
-                        )}
-                        
                         {/* Schedule - only for draft */}
                         {campaign.status === 'draft' && (
                           <button
@@ -520,7 +482,7 @@ export default function CampaignsPage() {
                             className="text-purple-500 hover:text-purple-700"
                             title="Schedule"
                           >
-                            <MdSchedule className="w-5 h-5" />
+                            <MdSend className="w-5 h-5" />
                           </button>
                         )}
                         
@@ -534,15 +496,6 @@ export default function CampaignsPage() {
                             <MdCancel className="w-5 h-5" />
                           </button>
                         )}
-                        
-                        {/* Duplicate */}
-                        <button
-                          onClick={() => handleDuplicate(campaign.id)}
-                          className="text-blue-500 hover:text-blue-700"
-                          title="Duplicate"
-                        >
-                          <MdContentCopy className="w-5 h-5" />
-                        </button>
                         
                         {/* Pause - only for running */}
                         {campaign.status === 'running' && (

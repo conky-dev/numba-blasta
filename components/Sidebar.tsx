@@ -37,6 +37,7 @@ const menuItems = [
       { name: 'Team', href: '/settings/team' },
       { name: 'Phone Numbers', href: '/settings/phone-numbers' },
       { name: 'Pricing', href: '/settings/pricing' },
+      { name: 'Billing', href: '/billing' },
     ]
   },
 ]
@@ -49,7 +50,7 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({ SMS: true })
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({ SMS: true, Settings: true })
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [userInfo, setUserInfo] = useState<{
@@ -141,9 +142,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         />
       )}
 
-      {/* Logo */}
+      {/* Sidebar */}
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
@@ -168,7 +169,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* User & Org Info */}
         {userInfo && (
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <div className="flex items-start space-x-3">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <MdPerson className="w-6 h-6 text-blue-600" />
@@ -264,8 +265,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Logout Button */}
-        <div className="p-4 border-t border-gray-200">
+        {/* Logout Button - Fixed to bottom */}
+        <div className="p-4 border-t border-gray-200 flex-shrink-0 mt-auto">
           <button
             onClick={() => setShowLogoutConfirm(true)}
             className="w-full flex items-center space-x-3 px-3 py-2 text-red-600 hover:bg-red-50 rounded-md transition-colors"

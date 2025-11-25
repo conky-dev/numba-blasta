@@ -276,7 +276,7 @@ try {
       
       if (twilioClient && process.env.TWILIO_MESSAGING_SERVICE_SID) {
         // Real Twilio send
-        console.log(`[WORKER] 📤 Sending SMS to ${to} via Twilio`);
+        console.log(`[WORKER]  📤 Sending SMS to ${to} via Twilio`);
         
         try {
           // 🧪 TESTING (DISABLED):
@@ -632,37 +632,34 @@ try {
         // Step 3: Get contacts based on target categories
         console.log(`[CAMPAIGN] Fetching contacts for org ${orgId}`);
         
-        let contactsQuery;
-        let contactsParams;
-        
-        if (targetCategories && targetCategories.length > 0) {
-          // Filter by categories using array overlap operator
-          // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
-          contactsQuery = `
-            SELECT id, phone, first_name, last_name, email
-            FROM contacts
-            WHERE org_id = $1 
-              AND deleted_at IS NULL 
-              AND opted_out_at IS NULL
-              AND category && $2
-            ORDER BY id
-          `;
-          contactsParams = [orgId, targetCategories];
-          console.log(`[CAMPAIGN] Filtering by categories:`, targetCategories);
-        } else {
-          // Send to all contacts
-          // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
-          contactsQuery = `
-            SELECT id, phone, first_name, last_name, email
-            FROM contacts
-            WHERE org_id = $1 
-              AND deleted_at IS NULL 
-              AND opted_out_at IS NULL
-            ORDER BY id
-          `;
-          contactsParams = [orgId];
-          console.log(`[CAMPAIGN] No category filter - sending to all contacts`);
+        // REQUIRE target categories - don't allow sending to all contacts
+        if (!targetCategories || !Array.isArray(targetCategories) || targetCategories.length === 0) {
+          console.error(`[CAMPAIGN] Campaign ${campaignId} has no target categories - cannot send`);
+          await query(
+            `UPDATE sms_campaigns
+             SET status = 'failed',
+                 completed_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [campaignId]
+          );
+          throw new Error('Campaign has no target categories. Cannot send to all contacts.');
         }
+        
+        console.log(`[CAMPAIGN] Filtering by categories:`, targetCategories);
+        
+        // Filter by categories using array overlap operator
+        // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
+        const contactsQuery = `
+          SELECT id, phone, first_name, last_name, email
+          FROM contacts
+          WHERE org_id = $1 
+            AND deleted_at IS NULL 
+            AND opted_out_at IS NULL
+            AND category && $2
+          ORDER BY id
+        `;
+        const contactsParams = [orgId, targetCategories];
         
         const contactsResult = await query(contactsQuery, contactsParams);
         

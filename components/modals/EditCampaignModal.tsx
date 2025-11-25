@@ -52,7 +52,7 @@ export default function EditCampaignModal({
     if (!formData.name || !formData.message) {
       setAlertModal({
         isOpen: true,
-        message: 'Please fill in campaign name and message',
+        message: 'Please fill in campaign name and message.',
         title: 'Missing Information',
         type: 'error'
       })

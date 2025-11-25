@@ -100,14 +100,24 @@ export async function PATCH(
   try {
     const auth = await authenticateRequest(request);
     const { id: campaignId } = await params;
-    const { name, message, templateId, listId, scheduleAt } = await request.json();
+    const { name, message, templateId, listId, scheduleAt, targetCategories } = await request.json();
 
     // Validation
-    if (!name && !message && !templateId && !listId && scheduleAt === undefined) {
+    if (!name && !message && !templateId && !listId && scheduleAt === undefined && !targetCategories) {
       return NextResponse.json(
         { error: 'At least one field is required' },
         { status: 422 }
       );
+    }
+    
+    // Validate target categories if provided
+    if (targetCategories !== undefined) {
+      if (!Array.isArray(targetCategories) || targetCategories.length === 0) {
+        return NextResponse.json(
+          { error: 'Target categories must be a non-empty array' },
+          { status: 422 }
+        );
+      }
     }
 
     // Check campaign exists and is editable
@@ -179,6 +189,35 @@ export async function PATCH(
       // Update status if scheduling
       if (scheduleAt && new Date(scheduleAt) > new Date()) {
         updates.push(`status = 'scheduled'`);
+      }
+    }
+    
+    if (targetCategories !== undefined) {
+      updates.push(`target_categories = $${paramIndex++}`);
+      queryParams.push(targetCategories);
+      
+      // Recalculate total_recipients if target categories changed
+      try {
+        const contactCountQuery = `
+          SELECT COUNT(DISTINCT id) as total
+          FROM contacts
+          WHERE org_id = $${paramIndex++}
+            AND deleted_at IS NULL
+            AND opted_out_at IS NULL
+            AND category && $${paramIndex++}
+        `;
+        queryParams.push(auth.orgId, targetCategories);
+        
+        const countResult = await query(contactCountQuery, queryParams.slice(-2));
+        const totalRecipients = parseInt(countResult.rows[0]?.total || '0');
+        
+        updates.push(`total_recipients = ${totalRecipients}`);
+        
+        // Remove the last two params we pushed (they were only for the count query)
+        queryParams.pop();
+        queryParams.pop();
+      } catch (countError) {
+        console.warn('[CAMPAIGNS] Failed to recalculate total_recipients:', countError);
       }
     }
 

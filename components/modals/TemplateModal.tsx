@@ -85,11 +85,6 @@ export default function TemplateModal({
               {formData.message.length} characters
             </p>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-            <p className="text-sm text-blue-800">
-              <strong>Tip:</strong> Use placeholders like [FirstName], [LastName], [Company] to personalize your messages
-            </p>
-          </div>
         </div>
         <div className="flex space-x-4">
           <button

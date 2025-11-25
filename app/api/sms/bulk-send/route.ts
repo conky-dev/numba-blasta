@@ -64,23 +64,22 @@ export async function POST(request: NextRequest) {
     // Get all contacts in the org that haven't opted out (limit to 10k at a time)
     const BATCH_SIZE = 10000;
     
-    // Build WHERE clause with optional category filter
-    // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
-    let whereClause = `WHERE org_id = $1 
-         AND opted_out_at IS NULL 
-         AND deleted_at IS NULL`;
-    
-    const queryParams: any[] = [orgId];
-    let paramIndex = 2;
-    
-    // Handle multiple categories or 'all'
-    if (categories && Array.isArray(categories) && categories.length > 0 && !categories.includes('all')) {
-      // Use GIN index with array overlap operator (&&)
-      // This finds contacts where their category array overlaps with selected categories
-      whereClause += ` AND category && $${paramIndex}`;
-      queryParams.push(categories);
-      paramIndex++;
+    // REQUIRE categories - don't allow sending to all contacts
+    if (!categories || !Array.isArray(categories) || categories.length === 0 || categories.includes('all')) {
+      return NextResponse.json(
+        { error: 'Please select at least one specific category. Sending to all contacts is not allowed.' },
+        { status: 422 }
+      );
     }
+    
+    // Build WHERE clause with category filter (required)
+    // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
+    const whereClause = `WHERE org_id = $1 
+         AND opted_out_at IS NULL 
+         AND deleted_at IS NULL
+         AND category && $2`;
+    
+    const queryParams: any[] = [orgId, categories];
     
     const contactsResult = await query(
       `SELECT DISTINCT ON (phone)
@@ -88,7 +87,7 @@ export async function POST(request: NextRequest) {
        FROM contacts 
        ${whereClause}
        ORDER BY phone, created_at ASC
-       LIMIT $${paramIndex}`,
+       LIMIT $3`,
       [...queryParams, BATCH_SIZE]
     );
 
@@ -96,10 +95,7 @@ export async function POST(request: NextRequest) {
 
     if (contacts.length === 0) {
       return NextResponse.json(
-        { error: categories && categories.length > 0 && !categories.includes('all')
-          ? `No contacts found in selected categories` 
-          : 'No contacts found to send to' 
-        },
+        { error: 'No contacts found in selected categories' },
         { status: 422 }
       );
     }
@@ -109,7 +105,7 @@ export async function POST(request: NextRequest) {
       `SELECT COUNT(DISTINCT phone) as total
        FROM contacts 
        ${whereClause}`,
-      queryParams.slice(0, paramIndex - 1)
+      queryParams
     );
 
     const totalContacts = parseInt(totalContactsResult.rows[0]?.total || '0');

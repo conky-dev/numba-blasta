@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MdEmail, MdLock, MdVisibility, MdVisibilityOff } from 'react-icons/md'
 import AlertModal from '@/components/modals/AlertModal'
+import VerificationModal from '@/components/modals/VerificationModal'
 import { api } from '@/lib/api-client'
 
 export default function LoginPage() {
@@ -15,6 +16,8 @@ export default function LoginPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [forgotEmail, setForgotEmail] = useState('')
   const [isSendingReset, setIsSendingReset] = useState(false)
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -50,14 +53,20 @@ export default function LoginPage() {
         return
       }
 
-      // Store session in localStorage
+      // Check if verification is required
+      if (data?.requiresVerification) {
+        setLoginEmail(email)
+        setShowVerifyModal(true)
+        setIsLoading(false)
+        return
+      }
+
+      // Legacy path: if token is returned directly (shouldn't happen with new flow)
       if (data?.token) {
         localStorage.setItem('auth_token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
+        router.push('/dashboard')
       }
-
-      // Success! Redirect to dashboard
-      router.push('/dashboard')
     } catch (error) {
       console.error('Login error:', error)
       setAlertModal({
@@ -68,6 +77,11 @@ export default function LoginPage() {
       })
       setIsLoading(false)
     }
+  }
+
+  const handleVerified = () => {
+    setShowVerifyModal(false)
+    router.push('/dashboard')
   }
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -240,17 +254,17 @@ export default function LoginPage() {
           </form>
 
           {/* Divider */}
-          <div className="relative my-6">
+          {/* <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-200"></div>
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-4 bg-white text-gray-500">Or continue with</span>
             </div>
-          </div>
+          </div> */}
 
           {/* Social Login Buttons */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setAlertModal({
@@ -287,7 +301,7 @@ export default function LoginPage() {
               </svg>
               <span className="ml-2 text-sm font-medium text-gray-700">Microsoft</span>
             </button>
-          </div>
+          </div> */}
 
           {/* Sign Up Link */}
           <div className="mt-6 text-center">
@@ -301,6 +315,28 @@ export default function LoginPage() {
                 Sign up
               </button>
             </p>
+          </div>
+
+          {/* Terms and Privacy Links */}
+          <div className="mt-4 text-center text-xs text-gray-500">
+            By signing in, you agree to our{' '}
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-700 underline"
+            >
+              Terms of Service
+            </a>
+            {' '}and{' '}
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-700 underline"
+            >
+              Privacy Policy
+            </a>
           </div>
         </div>
 
@@ -384,6 +420,17 @@ export default function LoginPage() {
           </div>
         </div>
       )}
+
+      {/* Verification Modal */}
+      <VerificationModal
+        isOpen={showVerifyModal}
+        email={loginEmail}
+        onVerified={handleVerified}
+        onCancel={() => {
+          setShowVerifyModal(false)
+          setIsLoading(false)
+        }}
+      />
 
       <AlertModal
         isOpen={alertModal.isOpen}

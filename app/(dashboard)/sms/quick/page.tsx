@@ -5,7 +5,10 @@ import PreviewModal from '@/components/modals/PreviewModal'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
+import InsufficientFundsModal from '@/components/modals/InsufficientFundsModal'
+import BalanceModal from '@/components/modals/BalanceModal'
 import RateLimitDisplay from '@/components/RateLimitDisplay'
+import MessageInputWithStats from '@/components/MessageInputWithStats'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
 import { api } from '@/lib/api-client'
 
@@ -53,6 +56,11 @@ export default function QuickSMSPage() {
     windowEnd?: string | null
   } | null>(null)
   const [loadingRateLimit, setLoadingRateLimit] = useState(false)
+  const [currentBalance, setCurrentBalance] = useState<number>(0)
+  const [loadingBalance, setLoadingBalance] = useState(true)
+  const [showInsufficientFundsModal, setShowInsufficientFundsModal] = useState(false)
+  const [showBalanceModal, setShowBalanceModal] = useState(false)
+  const [suggestedTopUpAmount, setSuggestedTopUpAmount] = useState<number>(0)
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -70,6 +78,32 @@ export default function QuickSMSPage() {
     api.templates.list({ limit: 100 }).catch(() => {
       // Silently fail - modal will retry if needed
     })
+  }, [])
+
+  // Load current balance
+  useEffect(() => {
+    const loadBalance = async () => {
+      setLoadingBalance(true)
+      try {
+        const token = localStorage.getItem('auth_token')
+        const response = await fetch('/api/billing/balance', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setCurrentBalance(data.balance || 0)
+        }
+      } catch (error) {
+        console.error('Failed to load balance:', error)
+      } finally {
+        setLoadingBalance(false)
+      }
+    }
+
+    loadBalance()
   }, [])
 
   // Load pricing for cost estimation
@@ -348,9 +382,11 @@ export default function QuickSMSPage() {
     }
   }
   
-  const charCount = message?.length || 0
-  const smsCount = calculateSegments(message || '') || 1
-  const encodingInfo = detectEncoding(message || '')
+  // Always include opt-out text in character count and segment calculation for preview
+  const messageWithOptOut = (message || '') + '\n\nReply STOP to unsubscribe.'
+  const charCount = messageWithOptOut.length
+  const smsCount = calculateSegments(messageWithOptOut) || 1
+  const encodingInfo = detectEncoding(messageWithOptOut)
   
   // Calculate estimated cost
   const estimatedCostPerMessage = costPerSegment * smsCount
@@ -358,20 +394,7 @@ export default function QuickSMSPage() {
     ? totalContacts 
     : categories.filter(cat => to.includes(cat.name)).reduce((sum, cat) => sum + cat.count, 0)
   
-  // Calculate cost with opt-out notice appended for contacts that need it
-  const contactsWithOptOut = needsOptOutCount
-  const contactsWithoutOptOut = selectedContactCount - contactsWithOptOut
-  
-  // Opt-out text that will be appended: "\n\nReply STOP to opt out"
-  const optOutText = "\n\nReply STOP to opt out"
-  const messageWithOptOut = (message || '') + optOutText
-  const segmentsWithOptOut = calculateSegments(messageWithOptOut)
-  const costPerMessageWithOptOut = costPerSegment * segmentsWithOptOut
-  
-  // Total cost = (contacts needing opt-out × message+opt-out cost) + (contacts without opt-out × message cost)
-  const costForContactsWithOptOut = contactsWithOptOut * costPerMessageWithOptOut
-  const costForContactsWithoutOptOut = contactsWithoutOptOut * estimatedCostPerMessage
-  const estimatedTotalCost = costForContactsWithOptOut + costForContactsWithoutOptOut
+  const estimatedTotalCost = selectedContactCount * estimatedCostPerMessage
 
   const handlePreview = () => {
     if (!senderInfo?.hasNumber) {
@@ -399,6 +422,12 @@ export default function QuickSMSPage() {
         title: 'Missing Information',
         type: 'error'
       })
+      return
+    }
+
+    // Check if user has sufficient balance
+    if (estimatedTotalCost > currentBalance) {
+      setShowInsufficientFundsModal(true)
       return
     }
 
@@ -493,7 +522,7 @@ export default function QuickSMSPage() {
         } else {
           const { contactCount, totalContacts, hasMore, jobsQueued, estimatedTotalCost } = response.data.bulk
           
-          let successMessage = `Successfully queued ${jobsQueued} messages to ${contactCount} contacts! Estimated cost: $${estimatedTotalCost.toFixed(2)}`
+          let successMessage = `Successfully queued ${jobsQueued} messages to ${contactCount} contacts! Estimated cost: $${estimatedTotalCost.toFixed(4)}`
           
           if (hasMore) {
             successMessage += `\n\n⚠️ You have ${totalContacts} total contacts. Only the first ${contactCount} were queued. Click send again to reach the remaining ${totalContacts - contactCount} contacts.`
@@ -539,25 +568,12 @@ export default function QuickSMSPage() {
   }
 
   const handleCategoryToggle = (category: string) => {
-    if (category === 'all') {
-      // Toggle all - if 'all' is selected, deselect everything, otherwise select 'all'
-      if (to.includes('all')) {
-        setTo([])
-      } else {
-        setTo(['all'])
-      }
+    if (to.includes(category)) {
+      // Remove the category
+      setTo(to.filter(c => c !== category))
     } else {
-      // Remove 'all' if a specific category is selected
-      const newSelection = to.filter(c => c !== 'all')
-      
-      if (newSelection.includes(category)) {
-        // Remove the category
-        const updated = newSelection.filter(c => c !== category)
-        setTo(updated.length === 0 ? ['all'] : updated)
-      } else {
-        // Add the category
-        setTo([...newSelection, category])
-      }
+      // Add the category
+      setTo([...to, category])
     }
   }
 
@@ -643,6 +659,47 @@ export default function QuickSMSPage() {
     }
   }
 
+  const handleOpenAddFunds = () => {
+    const shortfall = estimatedTotalCost - currentBalance
+    setSuggestedTopUpAmount(shortfall)
+    setShowBalanceModal(true)
+  }
+
+  const handleTopUp = async (amount: number) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/billing/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ amount })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to create checkout session')
+      }
+
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        throw new Error('No checkout URL returned')
+      }
+    } catch (error: any) {
+      console.error('Create checkout session error:', error)
+      setAlertModal({
+        isOpen: true,
+        message: error.message || 'Failed to start payment process',
+        title: 'Error',
+        type: 'error'
+      })
+    }
+  }
+
   return (
     <div className="p-4 md:p-8">
       <h1 className="text-xl md:text-2xl font-semibold text-gray-800 mb-6">Quick SMS</h1>
@@ -717,24 +774,6 @@ export default function QuickSMSPage() {
               </div>
             ) : (
               <div className="border border-gray-300 rounded-md p-4 space-y-2 max-h-64 overflow-y-auto">
-                {/* All Contacts option */}
-                <label className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                  <input
-                    type="checkbox"
-                    checked={to.includes('all')}
-                    onChange={() => handleCategoryToggle('all')}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="flex-1 text-sm font-medium text-gray-900">
-                    All Contacts
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {totalContacts}
-                  </span>
-                </label>
-
-                <div className="border-t border-gray-200 my-2"></div>
-
                 {/* Category checkboxes */}
                 {categories.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-2">
@@ -750,13 +789,12 @@ export default function QuickSMSPage() {
                         type="checkbox"
                         checked={to.includes(category.name)}
                         onChange={() => handleCategoryToggle(category.name)}
-                        disabled={to.includes('all')}
-                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-50"
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                       />
-                      <span className={`flex-1 text-sm ${to.includes('all') ? 'text-gray-400' : 'text-gray-700'}`}>
+                      <span className="flex-1 text-sm text-gray-700">
                         {category.name}
                       </span>
-                      <span className={`text-sm ${to.includes('all') ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <span className="text-sm text-gray-500">
                         {category.count}
                       </span>
                     </label>
@@ -877,110 +915,22 @@ export default function QuickSMSPage() {
                   <span>Emoji</span>
                 </button>
               </div>
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={6}
-                className="w-full px-4 py-3 focus:outline-none resize-none"
-                placeholder="Type your message here..."
-              />
-              <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-gray-200">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Characters:</span>
-                    <span className="ml-1">{charCount}</span>
-                    <span className="ml-3 text-xs">
-                      <span className="font-medium">Encoding:</span>
-                      <span className={`ml-1 font-semibold ${encodingInfo.encoding === 'UCS-2' ? 'text-orange-600' : 'text-green-600'}`}>
-                        {encodingInfo.encoding}
-                      </span>
-                      <span className="ml-1 text-gray-500">
-                        ({encodingInfo.encoding === 'GSM-7' ? '160/153' : '70/67'} chars)
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-semibold text-blue-900">SMS Segments:</span>
-                    <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-md bg-blue-600 text-white text-base font-bold">
-                      {smsCount}
-                    </span>
-                  </div>
-                </div>
-                
-                {/* Cost Estimation */}
-                {!loadingPricing && costPerSegment > 0 && selectedContactCount > 0 && (
-                  <div className="pt-2 border-t border-blue-200">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-600">
-                        Cost per message: <span className="font-semibold text-gray-800">${estimatedCostPerMessage.toFixed(4)}</span>
-                      </span>
-                      <span className="text-gray-600">
-                        × {contactsWithoutOptOut} contact{contactsWithoutOptOut !== 1 ? 's' : ''} = 
-                        <span className="ml-1 font-bold text-blue-900 text-sm">${costForContactsWithoutOptOut.toFixed(2)}</span>
-                      </span>
-                    </div>
-                    {needsOptOutCount > 0 && (
-                      <>
-                        <div className="mt-1 flex items-center justify-between text-xs">
-                          <span className="text-orange-600">
-                            + Message w/ opt-out ({segmentsWithOptOut} seg): <span className="font-semibold">${costPerMessageWithOptOut.toFixed(4)}</span>
-                          </span>
-                          <span className="text-orange-600">
-                            × {contactsWithOptOut} = <span className="ml-1 font-semibold">${costForContactsWithOptOut.toFixed(2)}</span>
-                          </span>
-                        </div>
-                        <div className="mt-1 pt-1 border-t border-blue-100 flex items-center justify-between text-xs">
-                          <span className="text-gray-700 font-medium">
-                            Total estimated cost:
-                          </span>
-                          <span className="font-bold text-blue-900 text-sm">
-                            ${estimatedTotalCost.toFixed(2)}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                    {needsOptOutCount === 0 && (
-                      <div className="mt-1 pt-1 border-t border-blue-100 flex items-center justify-between text-xs">
-                        <span className="text-gray-700 font-medium">
-                          Total estimated cost:
-                        </span>
-                        <span className="font-bold text-blue-900 text-sm">
-                          ${estimatedTotalCost.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {encodingInfo.encoding === 'UCS-2' && encodingInfo.problematicChars.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-orange-200 bg-orange-50 -mx-4 px-4 py-2">
-                    <div className="flex items-start space-x-2">
-                      <MdWarning className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 text-xs">
-                        <p className="font-semibold text-orange-900 mb-1">
-                          UCS-2 encoding detected - only 70 chars per segment instead of 160!
-                        </p>
-                        <p className="text-orange-800">
-                          Problematic characters: 
-                          <span className="ml-1 font-mono font-bold">
-                            {encodingInfo.problematicChars.map(char => 
-                              char === '\n' ? '\\n' : char === '\r' ? '\\r' : char
-                            ).join(', ')}
-                          </span>
-                        </p>
-                        <p className="text-orange-700 mt-1">
-                          Tip: Replace emojis, smart quotes (" "), and special characters with standard ones to use GSM-7 encoding.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+              <div className="px-4 pt-3 pb-3">
+                <MessageInputWithStats
+                  value={message}
+                  onChange={setMessage}
+                  recipientCount={selectedContactCount}
+                  targetCategories={to}
+                  placeholder="Type your message here..."
+                  rows={6}
+                  showCostEstimate={true}
+                />
               </div>
             </div>
           </div>
 
           {/* Shorten URL toggle */}
-          <div className="flex items-center space-x-3">
+          {/* <div className="flex items-center space-x-3">
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -995,10 +945,10 @@ export default function QuickSMSPage() {
               <MdLink className="w-4 h-4" />
               <span>Shorten my URL (Coming soon)</span>
             </span>
-          </div>
+          </div> */}
 
           {/* Send Time */}
-          <div>
+          {/* <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Send Time
             </label>
@@ -1037,7 +987,7 @@ export default function QuickSMSPage() {
                 />
               </div>
             )}
-          </div>
+          </div> */}
 
           {/* Submit button */}
           <div className="flex justify-center pt-4">
@@ -1179,6 +1129,24 @@ export default function QuickSMSPage() {
         message={alertModal.message}
         title={alertModal.title}
         type={alertModal.type}
+      />
+
+      <InsufficientFundsModal
+        isOpen={showInsufficientFundsModal}
+        onClose={() => setShowInsufficientFundsModal(false)}
+        onAddFunds={handleOpenAddFunds}
+        currentBalance={currentBalance}
+        requiredAmount={estimatedTotalCost}
+        recipientCount={selectedContactCount}
+        messageSegments={smsCount}
+      />
+
+      <BalanceModal
+        isOpen={showBalanceModal}
+        onClose={() => setShowBalanceModal(false)}
+        currentBalance={currentBalance}
+        onTopUp={handleTopUp}
+        suggestedAmount={suggestedTopUpAmount}
       />
 
       <ConfirmModal

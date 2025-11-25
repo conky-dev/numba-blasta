@@ -167,32 +167,26 @@ export async function POST(request: NextRequest) {
 
     // Calculate total_recipients based on target categories
     let totalRecipients = 0;
+    
+    // REQUIRE target categories - don't allow sending to all contacts
+    if (!targetCategories || !Array.isArray(targetCategories) || targetCategories.length === 0) {
+      return NextResponse.json(
+        { error: 'Target categories are required. Please select at least one category.' },
+        { status: 422 }
+      );
+    }
+    
     try {
-      let contactCountQuery;
-      let contactCountParams;
-      
-      if (targetCategories && targetCategories.length > 0) {
-        // Count contacts in specific categories
-        contactCountQuery = `
-          SELECT COUNT(DISTINCT id) as total
-          FROM contacts
-          WHERE org_id = $1
-            AND deleted_at IS NULL
-            AND opted_out_at IS NULL
-            AND category && $2
-        `;
-        contactCountParams = [auth.orgId, targetCategories];
-      } else {
-        // Count all contacts
-        contactCountQuery = `
-          SELECT COUNT(id) as total
-          FROM contacts
-          WHERE org_id = $1
-            AND deleted_at IS NULL
-            AND opted_out_at IS NULL
-        `;
-        contactCountParams = [auth.orgId];
-      }
+      // Count contacts in specific categories only
+      const contactCountQuery = `
+        SELECT COUNT(DISTINCT id) as total
+        FROM contacts
+        WHERE org_id = $1
+          AND deleted_at IS NULL
+          AND opted_out_at IS NULL
+          AND category && $2
+      `;
+      const contactCountParams = [auth.orgId, targetCategories];
       
       const countResult = await query(contactCountQuery, contactCountParams);
       totalRecipients = parseInt(countResult.rows[0]?.total || '0');

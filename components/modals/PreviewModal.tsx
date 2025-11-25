@@ -56,6 +56,7 @@ export default function PreviewModal({
               <div className="text-gray-700">
                 <span className="font-medium text-sm">Characters:</span>
                 <span className="ml-2 text-base">{charCount}</span>
+                <span className="ml-1 text-xs text-gray-500">(including opt-out)</span>
               </div>
               <div className="text-blue-900">
                 <span className="font-semibold text-base">SMS Segments:</span>
@@ -72,7 +73,7 @@ export default function PreviewModal({
                   </span>
                   <span className="text-gray-700">
                     × {recipientCount} contact{recipientCount !== 1 ? 's' : ''} = 
-                    <span className="ml-2 font-bold text-blue-900 text-lg">${estimatedTotalCost.toFixed(2)}</span>
+                    <span className="ml-2 font-bold text-blue-900 text-lg">${estimatedTotalCost.toFixed(4)}</span>
                   </span>
                 </div>
               </div>

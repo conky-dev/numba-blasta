@@ -26,14 +26,14 @@ export async function GET(request: NextRequest) {
       [orgId]
     );
 
-    // Get total count
-    // Only check opted_out_at - if it's NULL, they haven't opted out; if NOT NULL, they have opted out
+    // Get total count - should match what's in the MV (active contacts only)
     const totalResult = await query(
       `SELECT COUNT(*) as total
        FROM contacts
        WHERE org_id = $1 
          AND deleted_at IS NULL 
-         AND opted_out_at IS NULL`,
+         AND opted_out_at IS NULL
+         AND array_length(category, 1) > 0`,
       [orgId]
     );
 
