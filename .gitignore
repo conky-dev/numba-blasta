@@ -43,3 +43,9 @@ compare
 test-data/update.sql
 test-data/fix.py
 numbas.txt
+
+
+*.sql
+*.md
+
+scripts_/
