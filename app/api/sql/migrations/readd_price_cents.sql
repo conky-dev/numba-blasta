@@ -11,10 +11,6 @@ UPDATE sms_messages
 SET price_cents = 0.0015 
 WHERE price_cents IS NULL;
 
--- Step 3: Set default value for future inserts
-ALTER TABLE sms_messages 
-ALTER COLUMN price_cents SET DEFAULT 0.0015;
-
 COMMIT;
 
 -- Verify the changes

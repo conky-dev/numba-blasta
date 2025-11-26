@@ -337,26 +337,14 @@ try {
                 [fromPhoneNumber]
               );
               
-              console.log(`[WORKER] 📊 Increment result:`, incrementResult.rows[0]);
-              
               const success = incrementResult.rows[0]?.success;
               if (success) {
                 console.log(`[WORKER] ✅ Rate limit incremented for ${fromPhoneNumber}`);
-                
-                // Verify the increment by checking current count
-                const verifyResult = await query(
-                  `SELECT rate_limit_current_count, rate_limit_window_start 
-                   FROM phone_numbers 
-                   WHERE phone_number = $1`,
-                  [fromPhoneNumber]
-                );
-                console.log(`[WORKER] 📊 Current rate limit state:`, verifyResult.rows[0]);
               } else {
                 console.warn(`[WORKER] ⚠️ Rate limit increment returned false for ${fromPhoneNumber}`);
               }
             } catch (rateLimitError: any) {
               console.error(`[WORKER] ❌ Failed to increment rate limit:`, rateLimitError.message);
-              console.error(`[WORKER] ❌ Rate limit error stack:`, rateLimitError.stack);
               // Don't fail the job, just log the error
             }
           } else {
