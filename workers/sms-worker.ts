@@ -223,7 +223,7 @@ try {
       }
 
       // Step 4: Check rate limit for the phone number
-      const fromPhoneNumber = fromNumber || null;
+      let fromPhoneNumber = fromNumber || null;
       
       console.log(`[WORKER] 🔍 Rate limit check - fromNumber: ${fromNumber}, fromPhoneNumber: ${fromPhoneNumber}`);
       
@@ -322,6 +322,12 @@ try {
           twilioStatus = twilioMessage.status === 'accepted' || twilioMessage.status === 'sending' 
             ? 'sent' 
             : twilioMessage.status;
+          
+          // If we didn't have a fromPhoneNumber but Twilio returned one, use it
+          if (!fromPhoneNumber && twilioMessage.from) {
+            fromPhoneNumber = twilioMessage.from;
+            console.log(`[WORKER] Using phone number from Twilio response: ${fromPhoneNumber}`);
+          }
           
           console.log(`[WORKER] ✅ Twilio sent: ${twilioSid} (${twilioMessage.status} -> ${twilioStatus})`);
           
