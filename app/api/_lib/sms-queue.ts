@@ -19,11 +19,7 @@ const connection = new IORedis(process.env.REDIS_URL!, {
 export const smsQueue = new Queue('sms', {
   connection,
   defaultJobOptions: {
-    attempts: 3, // Retry failed jobs 3 times
-    backoff: {
-      type: 'exponential', // Wait 2s, 4s, 8s between retries
-      delay: 2000,
-    },
+    attempts: 1, // NEVER retry - SMS is not idempotent, retries cause duplicates
     removeOnComplete: {
       age: 3600, // Remove completed jobs after 1 hour
       count: 1000, // Keep last 1000 completed jobs

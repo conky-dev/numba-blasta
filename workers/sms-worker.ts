@@ -103,6 +103,10 @@ try {
     
     const { to, message, orgId, userId, contactId, campaignId, templateId, fromNumber, isMessengerReply } = job.data;
     
+    // Declare at function scope so it's accessible in catch blocks
+    let twilioSid: string | null = null;
+    let twilioStatus: string = 'sent';
+    
     try {
       // Step 1: Decide message body (append STOP text based on message type)
       // We need to do this first to calculate the correct cost
@@ -271,8 +275,6 @@ try {
       }
 
       // Step 5: Send SMS via Twilio (or simulate if not configured)
-      let twilioSid: string | null = null;
-      let twilioStatus: string = 'sent';
       
       if (twilioClient && process.env.TWILIO_MESSAGING_SERVICE_SID) {
         // Real Twilio send
@@ -581,6 +583,15 @@ try {
       
     } catch (error: any) {
       console.error(`[WORKER] ❌ Job ${job.id} failed:`, error.message);
+      
+      // CRITICAL: If we have a twilioSid, the message was already sent
+      // Don't throw (which triggers retry) - return success to prevent duplicate
+      if (twilioSid) {
+        console.warn(`[WORKER] ⚠️  Job failed but message was already sent (${twilioSid})`);
+        console.warn(`[WORKER] ⚠️  Marking as complete to prevent duplicate send`);
+        return { success: true, twilioSid, warning: 'Job failed but SMS was sent' };
+      }
+      
       throw error; // BullMQ will retry
     }
   },
