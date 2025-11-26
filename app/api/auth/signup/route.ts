@@ -3,7 +3,6 @@ import { hashPassword, validatePasswordStrength } from '@/app/api/_lib/auth-util
 import { query } from '@/app/api/_lib/db';
 import { sendEmailVerification } from '@/app/api/_lib/email';
 
-const ALLOWED_SIGNUP_DOMAIN = '@goldlevelmarketing.com';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,12 +19,12 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = String(email).trim().toLowerCase();
 
     // Restrict signups to allowed domain
-    if (!normalizedEmail.endsWith(ALLOWED_SIGNUP_DOMAIN) && normalizedEmail !== "hazeldinesunshine@gmail.com") {
-      return NextResponse.json(
-        { error: `Signups are restricted.` },
-        { status: 403 }
-      );
-    }
+    // if (normalizedEmail !== "hazeldinesunshine@gmail.com") {
+    //   return NextResponse.json(
+    //     { error: `Signups are restricted.` },
+    //     { status: 403 }
+    //   );
+    // }
 
     // Validate password strength
     const passwordValidation = validatePasswordStrength(password);
