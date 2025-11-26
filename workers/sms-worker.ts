@@ -484,12 +484,10 @@ try {
         // This is logged for manual reconciliation if needed
       }
       
-      // Step 6: Save message record to DB (in a transaction with single client)
-      const dbClient = await dbPool.connect();
+      // Step 6: Save message record to DB (in separate transaction)
+      await query('BEGIN');
       
       try {
-        await dbClient.query('BEGIN');
-        
         // Save message record
         console.log(`[WORKER] Saving message to database:`, {
           orgId,
@@ -498,7 +496,7 @@ try {
           messagePreview: finalMessage.substring(0, 20)
         });
         
-        const insertResult = await dbClient.query(
+        const insertResult = await query(
           `INSERT INTO sms_messages (
             org_id, contact_id, to_number, body,
             direction, status, segments, price_cents,
@@ -528,7 +526,7 @@ try {
         
         // If this message is part of a campaign, check if campaign is complete
         if (campaignId) {
-          const campaignStatsResult = await dbClient.query(
+          const campaignStatsResult = await query(
             `SELECT 
               c.id,
               c.status,
@@ -547,7 +545,7 @@ try {
           // If all messages have been sent, mark campaign as done
           if (stats && stats.status === 'running' && stats.messages_sent >= stats.total_recipients) {
             console.log(`[WORKER] 🎉 Campaign ${campaignId} complete! (${stats.messages_sent}/${stats.total_recipients})`);
-            await dbClient.query(
+            await query(
               `UPDATE sms_campaigns
                SET status = 'done',
                    completed_at = NOW(),
@@ -558,7 +556,7 @@ try {
           }
         }
         
-        await dbClient.query('COMMIT');
+        await query('COMMIT');
         
         console.log(`[WORKER] ✅ Job ${job.id} completed successfully`);
         
@@ -567,7 +565,7 @@ try {
       } catch (error: any) {
         console.error(`[WORKER] ❌ Transaction error:`, error.message);
         console.error(`[WORKER] ❌ Error stack:`, error.stack);
-        await dbClient.query('ROLLBACK');
+        await query('ROLLBACK');
         
         // CRITICAL: If Twilio send succeeded, don't throw
         // This prevents BullMQ from retrying and sending duplicate messages
@@ -581,9 +579,6 @@ try {
         
         // If Twilio send failed, it's safe to retry
         throw error;
-      } finally {
-        // Always release the client back to the pool
-        dbClient.release();
       }
       
     } catch (error: any) {
