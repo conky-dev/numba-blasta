@@ -100,9 +100,14 @@ export async function POST(request: NextRequest) {
                  updated_at = NOW()
              WHERE provider_sid = $2`;
         
-        await query(updateQuery, [messageStatus, messageSid]);
+        const result = await query(updateQuery, [messageStatus, messageSid]);
         
-        console.log(`✅ Updated message ${messageSid} status to: ${messageStatus}`);
+        if (result.rowCount === 0) {
+          console.warn(`⚠️ No message found with provider_sid: ${messageSid}`);
+        } else {
+          console.log(`✅ Updated ${result.rowCount} message(s) with ${messageSid} to status: ${messageStatus}`);
+        }
+        
         return new NextResponse(null, { status: 200 });
       } catch (error: any) {
         console.error(`❌ Failed to update status for ${messageSid}:`, error.message);
