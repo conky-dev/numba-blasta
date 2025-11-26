@@ -602,7 +602,7 @@ try {
   },
   {
     connection,
-    concurrency: 50, // Process 50 messages at a time
+    concurrency: 30, // Process 30 messages at a time
   }
 );
 
