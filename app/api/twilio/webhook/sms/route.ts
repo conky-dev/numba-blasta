@@ -185,8 +185,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Insert the inbound message into the database
-    await query(
+    // Get pricing for inbound message
+    let inboundCost = 0;
+    try {
+      const pricingResult = await query(
+        `SELECT price_per_unit 
+         FROM pricing 
+         WHERE service_type = 'inbound_message' 
+           AND is_active = true 
+         LIMIT 1`
+      );
+      
+      if (pricingResult.rows.length > 0) {
+        inboundCost = parseFloat(pricingResult.rows[0].price_per_unit);
+      } else {
+        console.warn('⚠️  No pricing found for inbound_message');
+      }
+    } catch (pricingError: any) {
+      console.error('❌ Failed to fetch inbound pricing:', pricingError.message);
+    }
+
+    // Insert the inbound message into the database with cost
+    const messageResult = await query(
       `INSERT INTO sms_messages (
         org_id,
         contact_id,
@@ -200,7 +220,8 @@ export async function POST(request: NextRequest) {
         created_at,
         sent_at,
         delivered_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), NOW())`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), NOW())
+      RETURNING id`,
       [
         orgId,
         contactId,
@@ -210,9 +231,34 @@ export async function POST(request: NextRequest) {
         'inbound',
         'received',
         numSegments,
-        0, // Inbound messages are free
+        inboundCost,
       ]
     );
+    
+    const messageId = messageResult.rows[0]?.id;
+
+    // Charge the organization
+    if (inboundCost > 0) {
+      try {
+        await query(
+          `SELECT deduct_credits($1, $2, $3, $4, $5, $6, $7) as transaction_id`,
+          [
+            orgId,
+            inboundCost,                         // p_amount
+            numSegments,                         // p_sms_count
+            inboundCost / numSegments,           // p_cost_per_sms
+            messageId,                           // p_message_id
+            null,                                // p_campaign_id
+            `Inbound SMS from ${from}`           // p_description
+          ]
+        );
+        
+        console.log(`💰 Charged $${inboundCost.toFixed(4)} for inbound message (${numSegments} segment(s))`);
+      } catch (chargeError: any) {
+        console.error('❌ Failed to charge for inbound message:', chargeError.message);
+        // Continue anyway - message is already saved
+      }
+    }
 
     console.log('✅ Inbound message saved to database');
 
