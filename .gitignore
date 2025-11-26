@@ -42,3 +42,4 @@ compare
 *.csv
 test-data/update.sql
 test-data/fix.py
+numbas.txt
