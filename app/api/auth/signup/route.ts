@@ -59,9 +59,10 @@ export async function POST(request: NextRequest) {
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
         await query(
-          `INSERT INTO email_verification_tokens (user_id, token, expires_at)
-           VALUES ($1, $2, $3)`,
-          [existing.id, verificationCode, expiresAt]
+          `INSERT INTO verification_codes (email, code, expires_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3`,
+          [normalizedEmail, verificationCode, expiresAt]
         );
 
         sendEmailVerification(normalizedEmail, verificationCode).catch(err => {
@@ -134,9 +135,10 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
 
     await query(
-      `INSERT INTO email_verification_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, $3)`,
-      [userId, verificationCode, expiresAt]
+      `INSERT INTO verification_codes (email, code, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (email) DO UPDATE SET code = $2, expires_at = $3`,
+      [normalizedEmail, verificationCode, expiresAt]
     );
 
     // Fire-and-forget email; errors here should not block signup

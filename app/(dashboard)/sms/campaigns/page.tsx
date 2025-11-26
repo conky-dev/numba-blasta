@@ -10,6 +10,7 @@ import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
 import InsufficientFundsModal from '@/components/modals/InsufficientFundsModal'
 import BalanceModal from '@/components/modals/BalanceModal'
+import UnverifiedPhoneModal from '@/components/modals/UnverifiedPhoneModal'
 import { api } from '@/lib/api-client'
 
 interface Campaign {
@@ -66,6 +67,7 @@ export default function CampaignsPage() {
   const [showBalanceModal, setShowBalanceModal] = useState(false)
   const [suggestedTopUpAmount, setSuggestedTopUpAmount] = useState<number>(0)
   const [pendingSchedule, setPendingSchedule] = useState<{ id: string; name: string; scheduledAt: string; estimatedCost: number; recipients: number; segments: number } | null>(null)
+  const [showUnverifiedPhoneModal, setShowUnverifiedPhoneModal] = useState(false)
 
   useEffect(() => {
     fetchCampaigns()
@@ -366,6 +368,11 @@ export default function CampaignsPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        // Check if it's an unverified phone error
+        if (data.error && data.error.includes('awaiting verification')) {
+          setShowUnverifiedPhoneModal(true)
+          return
+        }
         throw new Error(data.error || 'Failed to schedule campaign')
       }
 
@@ -796,6 +803,11 @@ export default function CampaignsPage() {
         currentBalance={currentBalance}
         onTopUp={handleTopUp}
         suggestedAmount={suggestedTopUpAmount}
+      />
+
+      <UnverifiedPhoneModal
+        isOpen={showUnverifiedPhoneModal}
+        onClose={() => setShowUnverifiedPhoneModal(false)}
       />
     </div>
   )

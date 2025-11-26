@@ -61,6 +61,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if fromNumber is provided and verify its status
+    if (fromNumber) {
+      const phoneResult = await query(
+        `SELECT id, status FROM phone_numbers 
+         WHERE phone_number = $1 AND org_id = $2`,
+        [fromNumber, orgId]
+      );
+
+      if (phoneResult.rows.length === 0) {
+        return NextResponse.json(
+          { error: 'Selected phone number not found' },
+          { status: 404 }
+        );
+      }
+
+      const phoneStatus = phoneResult.rows[0].status;
+      if (phoneStatus === 'awaiting_verification') {
+        return NextResponse.json(
+          { error: 'Cannot send messages while phone number is awaiting verification. Please complete the verification process first.' },
+          { status: 422 }
+        );
+      }
+    }
+
     // Get all contacts in the org that haven't opted out (limit to 10k at a time)
     const BATCH_SIZE = 10000;
     

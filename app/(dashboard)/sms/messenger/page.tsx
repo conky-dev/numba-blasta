@@ -5,6 +5,7 @@ import { MdSearch, MdPhoneIphone, MdMoreVert, MdRefresh, MdFilterList, MdUnsubsc
 import { api } from '@/lib/api-client'
 import AlertModal from '@/components/modals/AlertModal'
 import ConfirmModal from '@/components/modals/ConfirmModal'
+import UnverifiedPhoneModal from '@/components/modals/UnverifiedPhoneModal'
 
 interface Message {
   id: string
@@ -66,6 +67,7 @@ export default function MessengerPage() {
     title: '',
     onConfirm: () => {}
   })
+  const [showUnverifiedPhoneModal, setShowUnverifiedPhoneModal] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -277,6 +279,11 @@ export default function MessengerPage() {
       const response = await api.sms.sendReply(selectedConversation.contactId, newMessage.trim())
       
       if (response.error) {
+        // Check if it's an unverified phone error
+        if (response.error.includes('awaiting verification')) {
+          setShowUnverifiedPhoneModal(true)
+          return
+        }
         throw new Error(response.error)
       }
 
@@ -622,6 +629,12 @@ export default function MessengerPage() {
         message={confirmModal.message}
         title={confirmModal.title}
         type="danger"
+      />
+
+      {/* Unverified Phone Modal */}
+      <UnverifiedPhoneModal
+        isOpen={showUnverifiedPhoneModal}
+        onClose={() => setShowUnverifiedPhoneModal(false)}
       />
     </div>
   )

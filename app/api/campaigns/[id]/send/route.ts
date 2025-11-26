@@ -59,6 +59,28 @@ export async function POST(
       );
     }
 
+    // Check if organization has a phone number and if it's verified
+    const phoneResult = await query(
+      `SELECT id, status FROM phone_numbers 
+       WHERE org_id = $1 AND is_primary = true`,
+      [orgId]
+    );
+
+    if (phoneResult.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'No phone number configured for this organization' },
+        { status: 422 }
+      );
+    }
+
+    const phoneStatus = phoneResult.rows[0].status;
+    if (phoneStatus === 'awaiting_verification') {
+      return NextResponse.json(
+        { error: 'Cannot send campaign while phone number is awaiting verification. Please complete the verification process first.' },
+        { status: 422 }
+      );
+    }
+
     // Determine if this is scheduled or immediate
     const scheduleTime = scheduledAt || campaign.schedule_at;
     const isScheduled = !!scheduleTime;

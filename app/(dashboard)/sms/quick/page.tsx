@@ -7,6 +7,7 @@ import ConfirmModal from '@/components/modals/ConfirmModal'
 import SelectTemplateModal from '@/components/modals/SelectTemplateModal'
 import InsufficientFundsModal from '@/components/modals/InsufficientFundsModal'
 import BalanceModal from '@/components/modals/BalanceModal'
+import UnverifiedPhoneModal from '@/components/modals/UnverifiedPhoneModal'
 import RateLimitDisplay from '@/components/RateLimitDisplay'
 import MessageInputWithStats from '@/components/MessageInputWithStats'
 import { MdEdit, MdInsertDriveFile, MdEmojiEmotions, MdLink, MdWarning } from 'react-icons/md'
@@ -61,6 +62,8 @@ export default function QuickSMSPage() {
   const [showInsufficientFundsModal, setShowInsufficientFundsModal] = useState(false)
   const [showBalanceModal, setShowBalanceModal] = useState(false)
   const [suggestedTopUpAmount, setSuggestedTopUpAmount] = useState<number>(0)
+  const [showUnverifiedPhoneModal, setShowUnverifiedPhoneModal] = useState(false)
+  const [unverifiedPhoneNumber, setUnverifiedPhoneNumber] = useState<string>('')
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; message: string; title?: string; type?: 'success' | 'error' | 'info' }>({
     isOpen: false,
     message: '',
@@ -513,12 +516,18 @@ export default function QuickSMSPage() {
         const response = await api.sms.bulkSend(sendData)
 
         if (response.error) {
-          setAlertModal({
-            isOpen: true,
-            message: response.error,
-            title: 'Failed to Send Bulk SMS',
-            type: 'error'
-          })
+          // Check if it's an unverified phone error
+          if (response.error.includes('awaiting verification')) {
+            setUnverifiedPhoneNumber(from)
+            setShowUnverifiedPhoneModal(true)
+          } else {
+            setAlertModal({
+              isOpen: true,
+              message: response.error,
+              title: 'Failed to Send Bulk SMS',
+              type: 'error'
+            })
+          }
         } else {
           const { contactCount, totalContacts, hasMore, jobsQueued, estimatedTotalCost } = response.data.bulk
           
@@ -1147,6 +1156,12 @@ export default function QuickSMSPage() {
         currentBalance={currentBalance}
         onTopUp={handleTopUp}
         suggestedAmount={suggestedTopUpAmount}
+      />
+
+      <UnverifiedPhoneModal
+        isOpen={showUnverifiedPhoneModal}
+        onClose={() => setShowUnverifiedPhoneModal(false)}
+        phoneNumber={unverifiedPhoneNumber}
       />
 
       <ConfirmModal
